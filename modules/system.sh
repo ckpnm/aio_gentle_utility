@@ -1,18 +1,3 @@
-_do_prepare() {
-    export DEBIAN_FRONTEND=noninteractive
-    export NEEDRESTART_MODE=a
-    export NEEDRESTART_SUSPEND=1
-    apt-get update -y
-    apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
-    apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl gpg build-essential libdw-dev dkms ethtool fail2ban ufw irqbalance bc lsb-release dnsutils nano iproute2 jq
-}
-
-step_prepare() {
-    echo -e "\n${C_ACCENT}[ 01 ] ПОДГОТОВКА СИСТЕМЫ${C_BASE}\n"
-    wait_for_apt
-    run_task "Подготовка системы" "_do_prepare"
-}
-
 _do_xanmod_repo() {
     SUPPORT=$(/lib64/ld-linux-x86-64.so.2 --help)
     if echo "$SUPPORT" | grep -q "x86-64-v4 (supported"; then PACKAGE="linux-xanmod-edge-x64v4"
