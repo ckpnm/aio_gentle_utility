@@ -44,17 +44,69 @@ step_ipregion() {
     local bar_pid=$!
     wait $task_pid
     kill $bar_pid 2>/dev/null; wait $bar_pid 2>/dev/null
-    printf "\r\e[K"
+    printf "\r\e[K\n"
     
     if [ -f "$ip_tmp" ]; then
-        cat "$ip_tmp"
+        sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' "$ip_tmp" | while IFS= read -r line; do
+            [[ -z "${line// /}" ]] && continue
+            [[ "$line" == *"https://github.com/Davoyan/ipregion"* ]] && continue
+            
+            if [[ "$line" == *"Forked by"* ]] || [[ "$line" =~ ^Legend ]]; then
+                echo -e "  ${C_ACCENT}${C_BOLD}${line}${C_BASE}"
+                continue
+            fi
+
+            # Заголовки Code Country IPv4
+            if [[ "$line" =~ ^Service[[:space:]]+IPv4 ]] || [[ "$line" =~ ^Code[[:space:]]+Country ]]; then
+                line="${line//\% /}"
+                echo -e "  ${C_ACCENT}${C_BOLD}${line}${C_BASE}"
+                continue
+            fi
+            
+            local add_newlines=0
+            if [[ "$line" =~ ^2ip\.io ]]; then add_newlines=1; fi
+            
+            # Блок со странами (SE Sweden 94%)
+            if [[ "$line" =~ ^([A-Za-z/]+)[[:space:]]+([A-Za-z\ ]+)[[:space:]]+([0-9]+)%$ ]]; then
+                local code="${BASH_REMATCH[1]}"
+                local country="${BASH_REMATCH[2]}"
+                local pct="${BASH_REMATCH[3]}"
+                
+                local p_code=$(printf "%-7s" "$code")
+                local p_country=$(printf "%-11s" "$country")
+                echo -e "  ${C_ACCENT}${p_code}${C_WHITE}${p_country}${C_ACCENT}${pct} %${C_BASE}"
+                continue
+            fi
+            
+            if [[ "$line" =~ ^([^:]+):\ (.*)$ ]]; then
+                local key="${BASH_REMATCH[1]}"
+                local val="${BASH_REMATCH[2]}"
+                echo -e "  ${C_ACCENT}${key}:${C_BASE} ${C_WHITE}${val}${C_BASE}"
+            else
+                local left="${line:0:21}"
+                local right="${line:21}"
+                
+                right="${right//Yes/${C_OK}Yes${C_ACCENT}}"
+                right="${right//No/${C_ERR}No${C_ACCENT}}"
+                right="${right//N\/A/${C_ERR}N\/A${C_ACCENT}}"
+                
+                echo -e "  ${C_ACCENT}${left}${right}${C_BASE}"
+            fi
+
+            if [[ $add_newlines -eq 1 ]]; then echo ""; echo ""; fi
+        done
         rm -f "$ip_tmp"
     fi
 }
 
+_do_logs() {
+    journalctl --vacuum-time=1d
+    find /var/log -type f -name "*.log" -exec truncate -s 0 {} +
+}
+
 step_logs() {
     echo -e "\n${C_ACCENT}[ 12 ] ОЧИСТКА И РОТАЦИЯ ЛОГОВ${C_BASE}\n"
-    run_task "Очистка системных журналов" "journalctl --vacuum-time=1d; find /var/log -type f -name \"*.log\" -exec truncate -s 0 {} +"
+    run_task "Очистка системных журналов" "_do_logs"
     echo -e "\n  ${C_OK}Место на диске успешно освобождено.${C_BASE}"
 }
 
