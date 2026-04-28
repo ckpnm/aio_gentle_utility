@@ -17,10 +17,10 @@ apt-get install -y -qq git curl jq >/dev/null 2>&1
 
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "\e[90mОбновление существующей установки...\e[0m"
-    cd "$INSTALL_DIR" && git pull origin main
+    cd "$INSTALL_DIR" && git pull origin main >/dev/null 2>&1
 else
     echo -e "\e[90mКлонирование репозитория...\e[0m"
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    git clone "$REPO_URL" "$INSTALL_DIR" >/dev/null 2>&1
 fi
 
 if [ ! -f "$INSTALL_DIR/main.sh" ]; then
@@ -33,4 +33,6 @@ ln -sf "$INSTALL_DIR/main.sh" /usr/local/bin/aio_gentle
 
 echo -e "\e[32m[ ИНФО ] Утилита установлена! Запускаем...\e[0m"
 sleep 1
-exec /usr/local/bin/aio_gentle
+
+
+exec /usr/local/bin/aio_gentle < /dev/tty
