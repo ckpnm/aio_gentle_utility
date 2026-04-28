@@ -5,6 +5,8 @@ _do_ufw_setup() {
     ufw allow 3000/tcp
     ufw allow 53/tcp
     ufw allow 53/udp
+    ufw allow 80/tcp
+    ufw allow 80/udp
     echo 'y' | ufw enable
 }
 
@@ -13,10 +15,10 @@ _do_tg_install() {
     bash /tmp/tg_install.sh
 }
 
-step_security() {
-    echo -e "\n${C_ACCENT}[ 08 ] TRAFFIC-GUARD & UFW${C_BASE}\n"
+_setup_firewalls() {
     local default_port=$(ss -tlnp 2>/dev/null | grep sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
     default_port=${default_port:-22}
+    
     cursor_on
     echo -e "  ${C_DIM}Настройка файрвола (UFW) может заблокировать доступ к серверу.${C_BASE}"
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Укажи текущий порт SSH [${default_port}]: ${C_BASE}")" USER_SSH
@@ -24,6 +26,7 @@ step_security() {
     
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Точно включить UFW и оставить порт ${USER_SSH} открытым? (y/n): ${C_BASE}")" CONFIRM
     cursor_off
+    
     if [[ "$CONFIRM" =~ ^[YyДд] ]]; then
         wait_for_apt
         run_task "Установка и настройка UFW" "_do_ufw_setup"
@@ -36,10 +39,24 @@ step_security() {
     fi
 }
 
+step_security() {
+    local opts=("Установить UFW и Traffic-Guard" "Остановить Traffic-Guard (Пауза)" "Запустить Traffic-Guard" "Назад")
+    while true; do
+        render_menu "TRAFFIC-GUARD & UFW" "${opts[@]}"
+        clear
+        case $MENU_CHOICE in
+            0) _setup_firewalls; echo -e "\n${C_OK}Нажми любую клавишу...${C_BASE}"; read -rsn1 ;;
+            1) run_task "Остановка Traffic-Guard" "systemctl stop traffic-guard 2>/dev/null || true"; return 0 ;;
+            2) run_task "Запуск Traffic-Guard" "systemctl start traffic-guard 2>/dev/null || true"; return 0 ;;
+            3) return 1 ;;
+        esac
+    done
+}
+
 _do_bot_ban_logic() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    # Добавлен ufw в список установки, чтобы apt не удалил его как конфликтующий пакет
+    
     apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nftables curl python3 ipset iptables-persistent whois ufw
     
     LIST_URL="https://raw.githubusercontent.com/Loorrr293/blocklist/main/blocklist.txt"
@@ -181,8 +198,9 @@ step_bot_protection() {
     wait_for_apt
     run_task "Установка правил iptables и защит" "_do_bot_ban_logic"
 
-    local count_v4=$(ipset list leaseweb_v4 2>/dev/null | grep -c '/' || echo "0")
-    local count_v6=$(ipset list leaseweb_v6 2>/dev/null | grep -c '/' || echo "0")
+    # Исправлен баг с двойным выводом нуля
+    local count_v4=$(ipset list leaseweb_v4 2>/dev/null | grep -c '/' || true)
+    local count_v6=$(ipset list leaseweb_v6 2>/dev/null | grep -c '/' || true)
     
     echo -e "  ${C_DIM}-------------------------------------------------------${C_BASE}"
     echo -e "  ${C_WHITE}ИТОГ: Забанено ${C_ACCENT}${count_v4}${C_WHITE} IPv4 и ${C_ACCENT}${count_v6}${C_WHITE} IPv6 подсетей.${C_BASE}"
