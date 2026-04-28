@@ -1,6 +1,5 @@
 #!/bin/bash
-
-REPO_URL="https://github.com/ckpnm/aio_gentle.git"
+REPO_URL="https://github.com/ckpnm/aio_gentle_utility.git"
 INSTALL_DIR="/opt/aio_gentle"
 
 if [[ $EUID -ne 0 ]]; then
@@ -10,7 +9,10 @@ fi
 
 echo -e "\e[1;36mУстановка AIO VPN GENTLE UTILITY...\e[0m"
 
-apt-get update -qq && apt-get install -y -qq git curl jq
+echo -e "\e[90mУстановка базовых пакетов...\e[0m"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null 2>&1
+apt-get install -y -qq git curl jq >/dev/null 2>&1
 
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "\e[90mОбновление существующей установки...\e[0m"
