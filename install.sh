@@ -33,4 +33,4 @@ ln -sf "$INSTALL_DIR/main.sh" /usr/local/bin/aio_gentle
 
 echo -e "\e[32m[ ИНФО ] Утилита установлена! Запускаем...\e[0m"
 sleep 1
-exec aio_gentle
+exec /usr/local/bin/aio_gentle
