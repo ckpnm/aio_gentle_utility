@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Замени на URL своего репозитория!
 REPO_URL="https://github.com/ckpnm/aio_gentle.git"
 INSTALL_DIR="/opt/aio_gentle"
 
