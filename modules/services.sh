@@ -99,9 +99,14 @@ _setup_3x_ui() {
     local total_opts=${#ssl_opts[@]}
     local manual_idx=$((total_opts - 2))
     local nossl_idx=$((total_opts - 1))
+    
     if [ "$ssl_choice" -eq 0 ]; then
         cursor_on
         read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи домен: ${C_BASE}")" XUI_DOMAIN
+        if [ -z "$XUI_DOMAIN" ]; then
+            echo -e "  ${C_ERR}Домен не введен. Отмена установки.${C_BASE}"
+            cursor_off; sleep 2; return
+        fi
         export XUI_DOMAIN; cursor_off
         run_task "Выпуск сертификата (certbot)" "_do_certbot_xui"
         CERT_PUB="/etc/letsencrypt/live/${XUI_DOMAIN}/fullchain.pem"
@@ -120,6 +125,10 @@ _setup_3x_ui() {
         cursor_on
         read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Путь к crt: ${C_BASE}")" CERT_PUB
         read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Путь к key: ${C_BASE}")" CERT_KEY
+        if [ -z "$CERT_PUB" ] || [ -z "$CERT_KEY" ]; then
+            echo -e "  ${C_ERR}Пути не введены. Отмена установки.${C_BASE}"
+            cursor_off; sleep 2; return
+        fi
         export CERT_PUB CERT_KEY; cursor_off
     elif [ "$ssl_choice" -ne "$nossl_idx" ]; then
         local sel_idx=$((ssl_choice - 2))
@@ -203,31 +212,57 @@ step_3x_ui() {
 }
 
 # -------------------- DOCKER --------------------
+_do_docker_install() {
+    curl -fsSL https://get.docker.com | sh
+}
+_do_docker_start() {
+    systemctl enable --now docker
+}
+_do_docker_uninstall() {
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get purge -y -qq docker-engine docker docker.io docker-ce docker-ce-cli containerd.io
+    rm -rf /var/lib/docker
+}
+
 step_docker() {
     local opts=("Установить Docker" "Удалить Docker" "Назад")
     while true; do
         render_menu "УПРАВЛЕНИЕ DOCKER" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка Docker" "curl -fsSL https://get.docker.com | sh"; run_task "Запуск" "systemctl enable --now docker"; return 0 ;;
-            1) run_task "Удаление Docker" "apt-get purge -y -qq docker-engine docker docker.io docker-ce docker-ce-cli containerd.io; rm -rf /var/lib/docker"; return 0 ;;
+            0) run_task "Установка Docker" "_do_docker_install"; run_task "Запуск Docker" "_do_docker_start"; return 0 ;;
+            1) run_task "Удаление Docker" "_do_docker_uninstall"; return 0 ;;
             2) return 1 ;;
         esac
     done
 }
 
 # -------------------- ADGUARD HOME --------------------
+_do_adguard_port() {
+    systemctl stop systemd-resolved 2>/dev/null || true
+    echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+}
 _do_adguard_bin() {
-    systemctl stop AdGuardHome 2>/dev/null; rm -rf /opt/AdGuardHome /etc/systemd/system/AdGuardHome.service
+    systemctl stop AdGuardHome 2>/dev/null || true
+    rm -rf /opt/AdGuardHome /etc/systemd/system/AdGuardHome.service
     curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v
 }
+_do_adguard_update() {
+    /opt/AdGuardHome/AdGuardHome -s update || true
+}
+_do_adguard_uninstall() {
+    /opt/AdGuardHome/AdGuardHome -s uninstall 2>/dev/null || true
+    rm -rf /opt/AdGuardHome
+}
+
 _install_adguard() {
     if check_installed "[ -d /opt/AdGuardHome ]"; then return; fi
-    run_task "Освобождение порта 53" "systemctl stop systemd-resolved 2>/dev/null; echo 'nameserver 8.8.8.8' > /etc/resolv.conf"
+    run_task "Освобождение порта 53" "_do_adguard_port"
     run_task "Установка бинарника" "_do_adguard_bin"
     echo -e "\n  ${C_OK}Установлено! Настрой интерфейс по адресу: http://$(curl -s4 ifconfig.me):3000${C_BASE}"
     echo -e "  ${C_ERR}ОБЯЗАТЕЛЬНО: В настройках смени веб-порт с 80 на 3000.${C_BASE}"
 }
+
 step_adguard() {
     local opts=("Установить AdGuard Home" "Обновить AdGuard Home" "Удалить AdGuard Home" "Назад")
     while true; do
@@ -235,35 +270,117 @@ step_adguard() {
         clear
         case $MENU_CHOICE in
             0) _install_adguard; return 0 ;;
-            1) run_task "Обновление" "/opt/AdGuardHome/AdGuardHome -s update"; return 0 ;;
-            2) run_task "Удаление" "/opt/AdGuardHome/AdGuardHome -s uninstall; rm -rf /opt/AdGuardHome"; return 0 ;;
+            1) run_task "Обновление" "_do_adguard_update"; return 0 ;;
+            2) run_task "Удаление" "_do_adguard_uninstall"; return 0 ;;
             3) return 1 ;;
         esac
     done
 }
 
-# -------------------- BESZEL & WARP --------------------
+# -------------------- BESZEL --------------------
+_do_beszel_hub() {
+    ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/armv6l/arm/' -e 's/armv7l/arm/' -e 's/aarch64/arm64/')
+    OS=$(uname -s)
+    mkdir -p /opt/beszel-hub
+    curl -sL "https://github.com/henrygd/beszel/releases/latest/download/beszel_${OS}_${ARCH}.tar.gz" | tar -xz -C /opt/beszel-hub beszel
+    chmod +x /opt/beszel-hub/beszel
+    
+    cat << EOF > /etc/systemd/system/beszel.service
+[Unit]
+Description=Beszel Hub
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+User=root
+WorkingDirectory=/opt/beszel-hub
+ExecStart=/opt/beszel-hub/beszel serve --http "0.0.0.0:8090"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now beszel.service
+}
+
+_do_beszel_agent() {
+    ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/armv6l/arm/' -e 's/armv7l/arm/' -e 's/aarch64/arm64/')
+    OS=$(uname -s)
+    mkdir -p /opt/beszel-agent
+    curl -sL "https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_${OS}_${ARCH}.tar.gz" | tar -xz -C /opt/beszel-agent beszel-agent
+    chmod +x /opt/beszel-agent/beszel-agent
+    
+    cat << EOF > /etc/systemd/system/beszel-agent.service
+[Unit]
+Description=Beszel Agent Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/beszel-agent/beszel-agent
+Environment="LISTEN=45876"
+Environment="KEY=${B_KEY}"
+Environment="TOKEN=${B_TOKEN}"
+Environment="HUB_URL=${B_URL}"
+Restart=on-failure
+RestartSec=5
+StateDirectory=beszel-agent
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now beszel-agent.service
+}
+
+_do_beszel_uninstall() {
+    systemctl stop beszel.service beszel-agent.service 2>/dev/null || true
+    systemctl disable beszel.service beszel-agent.service 2>/dev/null || true
+    rm -f /etc/systemd/system/beszel.service /etc/systemd/system/beszel-agent.service
+    systemctl daemon-reload
+    rm -rf /opt/beszel-hub /opt/beszel-agent /var/lib/beszel-agent
+}
+
 step_beszel() {
     local opts=("Установить HUB" "Установить Agent" "Удалить Beszel" "Назад")
     while true; do
         render_menu "УПРАВЛЕНИЕ BESZEL" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка HUB" "curl -sL https://github.com/henrygd/beszel/releases/latest/download/beszel_Linux_amd64.tar.gz | tar -xz -C /opt"; return 0 ;;
-            1) echo "В разработке..."; return 0 ;;
-            2) run_task "Удаление" "rm -rf /opt/beszel*"; return 0 ;;
+            0) run_task "Установка HUB" "_do_beszel_hub"; return 0 ;;
+            1) 
+               cursor_on
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Public Key (обязательно): ${C_BASE}")" B_KEY
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Token (если нужен): ${C_BASE}")" B_TOKEN
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Hub URL/IP: ${C_BASE}")" B_URL
+               export B_KEY B_TOKEN B_URL
+               cursor_off
+               if [ -n "$B_KEY" ]; then run_task "Установка Agent" "_do_beszel_agent"; fi
+               return 0 ;;
+            2) run_task "Удаление Beszel" "_do_beszel_uninstall"; return 0 ;;
             3) return 1 ;;
         esac
     done
 }
+
+# -------------------- WARP --------------------
+_do_warp_install() {
+    bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/install.sh)
+}
+_do_warp_uninstall() {
+    bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/uninstall.sh)
+}
+
 step_warp() {
     local opts=("Установить WARP" "Удалить WARP" "Назад")
     while true; do
         render_menu "УПРАВЛЕНИЕ WARP" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка WARP" "bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/install.sh)"; return 0 ;;
-            1) run_task "Удаление WARP" "bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/uninstall.sh)"; return 0 ;;
+            0) run_task "Установка WARP" "_do_warp_install"; return 0 ;;
+            1) run_task "Удаление WARP" "_do_warp_uninstall"; return 0 ;;
             2) return 1 ;;
         esac
     done
