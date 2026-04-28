@@ -142,7 +142,13 @@ render_menu() {
         done
         printf "\e[J"
 
-        read -rsn3 key
+        # Защита от EOF 
+        if ! read -rsn3 key; then
+            cursor_on
+            echo -e "\n\e[31m[ ОШИБКА ] Потеряна связь с терминалом. Запусти утилиту вручную: aio_gentle\e[0m"
+            exit 1
+        fi
+
         case "$key" in
             $'\e[A') while true; do ((cur--)); [ "$cur" -lt 0 ] && cur=$((${#options[@]} - 1)); [[ "${options[$cur]}" != ---* ]] && break; done ;;
             $'\e[B') while true; do ((cur++)); [ "$cur" -ge "${#options[@]}" ] && cur=0; [[ "${options[$cur]}" != ---* ]] && break; done ;;
@@ -151,7 +157,7 @@ render_menu() {
     done
 }
 
-# Подгрузка всех модулей
+# Подгрузка модулей
 for f in "$INSTALL_DIR"/modules/*.sh; do source "$f"; done
 
 step_update_script() {
