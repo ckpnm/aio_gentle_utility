@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="2.0"
+export SCRIPT_VERSION="2.1"
 export INSTALL_DIR="/opt/aio_gentle"
 export LOG_FILE="/var/log/aio_setup.log"
 
@@ -142,7 +142,6 @@ render_menu() {
         done
         printf "\e[J"
 
-        # Защита от EOF 
         if ! read -rsn3 key; then
             cursor_on
             echo -e "\n\e[31m[ ОШИБКА ] Потеряна связь с терминалом. Запусти утилиту вручную: aio_gentle\e[0m"
@@ -157,7 +156,6 @@ render_menu() {
     done
 }
 
-# Подгрузка модулей
 for f in "$INSTALL_DIR"/modules/*.sh; do source "$f"; done
 
 step_update_script() {
@@ -167,7 +165,7 @@ step_update_script() {
     git pull origin main >/dev/null 2>&1
     echo -e "\n  ${C_OK}Скрипт успешно обновлен! Перезапуск...${C_BASE}"
     sleep 1
-    exec /usr/local/bin/aio_gentle
+    exec /usr/local/bin/aio_gentle < /dev/tty
 }
 
 step_uninstall_script() {
@@ -185,7 +183,6 @@ options=(
     "--- ПАНЕЛИ И ПРОКСИ ---"
     "3x-ui"
     "--- БАЗОВЫЕ НАСТРОЙКИ ---"
-    "Базовая подготовка" 
     "Ядро XanMod" 
     "BBR & TCP" 
     "Swap (Подкачка)"
@@ -220,7 +217,6 @@ while true; do
     clear
     case "${options[$choice]}" in
         "3x-ui") step_3x_ui || NEEDS_PAUSE=0 ;;
-        "Базовая подготовка") step_prepare ;;
         "Ядро XanMod") step_kernel ;;
         "BBR & TCP") step_network ;;
         "Swap (Подкачка)") step_swap || NEEDS_PAUSE=0 ;;
