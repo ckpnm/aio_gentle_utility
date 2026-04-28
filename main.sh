@@ -1,244 +1,198 @@
-#!/bin/bash
+_do_ufw_setup() {
+    export DEBIAN_FRONTEND=noninteractive 
+    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ufw
+    ufw allow "$USER_SSH/tcp"
+    ufw allow 3000/tcp
+    ufw allow 53/tcp
+    ufw allow 53/udp
+    echo 'y' | ufw enable
+}
 
-export SCRIPT_VERSION="2.1"
-export INSTALL_DIR="/opt/aio_gentle"
-export LOG_FILE="/var/log/aio_setup.log"
+_do_tg_install() {
+    safe_download "https://raw.githubusercontent.com/dotX12/traffic-guard/master/install.sh" "/tmp/tg_install.sh" ""
+    bash /tmp/tg_install.sh
+}
 
-if [[ $EUID -ne 0 ]]; then
-   echo -e "\e[1;31mОшибка: Скрипт должен быть запущен от имени root.\e[0m"
-   exit 1
-fi
-
-echo -e "\n========================================" >> "$LOG_FILE"
-echo "Запуск AIO VPN GENTLE UTILITY: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
-echo "========================================" >> "$LOG_FILE"
-
-export C_BASE='\e[0m'
-export C_ACCENT='\e[1;36m' 
-export C_DIM='\e[90m'      
-export C_OK='\e[32m'       
-export C_ERR='\e[31m'      
-export C_INV='\e[7m'       
-export C_WHITE='\e[97m'    
-export C_BOLD='\e[1m'
-
-cursor_off() { printf "\e[?25l"; }
-cursor_on()  { printf "\e[?25h"; }
-trap "cursor_on; echo; exit" SIGINT
-
-draw_header() {
-    local title="$1"
-    local width=54
-    local title_len=${#title}
-    local pad_right=$(( width - 2 - title_len ))
-    [[ $pad_right -lt 0 ]] && pad_right=0
-    local pad_spaces=$(printf "%${pad_right}s" "")
+step_security() {
+    echo -e "\n${C_ACCENT}[ 08 ] TRAFFIC-GUARD & UFW${C_BASE}\n"
+    local default_port=$(ss -tlnp 2>/dev/null | grep sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
+    default_port=${default_port:-22}
     
-    echo -e "${C_ACCENT}┌──────────────────────────────────────────────────────┐${C_BASE}\e[K"
-    echo -e "${C_ACCENT}│  ${title}${pad_spaces}│${C_BASE}\e[K"
-    echo -e "${C_ACCENT}└──────────────────────────────────────────────────────┘${C_BASE}\e[K"
-}
-
-_draw_progress() {
-    local pid=$1
-    local width=15; local p=0; local delay=0.1; local ticks=0
-    while kill -0 "$pid" 2>/dev/null; do
-        local bar="["
-        for ((i=0; i<width; i++)); do
-            if [ $i -lt $p ]; then bar+="■"; else bar+="·"; fi
-        done
-        bar+="]"
-        printf "\e[u%b%s%b" "$C_ACCENT" "$bar" "$C_BASE"
-        sleep $delay
-        ((ticks++))
-        if [ $p -lt $((width * 6 / 10)) ]; then
-            if (( ticks % 2 == 0 )); then ((p++)); fi
-        elif [ $p -lt $((width * 8 / 10)) ]; then
-            if (( ticks % 5 == 0 )); then ((p++)); fi
-        elif [ $p -lt $((width - 1)) ]; then
-            if (( ticks % 15 == 0 )); then ((p++)); fi
-        fi
-    done
-}
-
-run_task() {
-    local task_name=$1
-    local cmd_func=$2
-    cursor_off
-    local text_len=${#task_name}
-    local pad_len=$(( 50 - text_len ))
-    [[ $pad_len -lt 1 ]] && pad_len=1
-    local pad_spaces=$(printf "%${pad_len}s" "")
-    printf "  ${C_ACCENT}${C_BOLD}%s%s${C_BASE}" "$task_name" "$pad_spaces"
-    printf "\e[s"
-
-    $cmd_func >> "$LOG_FILE" 2>&1 &
-    local task_pid=$!
-
-    _draw_progress "$task_pid" &
-    local bar_pid=$!
-
-    wait $task_pid
-    local exit_code=$?
-    kill $bar_pid 2>/dev/null; wait $bar_pid 2>/dev/null
-    printf "\e[u\e[K"
-
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${C_OK}✓${C_BASE}"
-    else
-        echo -e "${C_ERR}[ОШИБКА]${C_BASE}"
-        echo -e "  ${C_WHITE}Смотри логи: $LOG_FILE${C_BASE}"
-        cursor_on; exit 1
-    fi
-}
-
-safe_download() {
-    local url="$1" dest="$2" expected_hash="$3"
-    curl -sSL "$url" > "$dest"
-    if [ -n "$expected_hash" ]; then
-        if [ "$(sha256sum "$dest" | awk '{print $1}')" != "$expected_hash" ]; then
-            rm -f "$dest"; return 1
-        fi
-    fi
-    return 0
-}
-
-check_installed() {
-    if eval "$1" >/dev/null 2>&1; then
-        echo -e "\n  ${C_OK}[ ИНФО ]${C_BASE} Компонент уже установлен."
-        return 0
-    else
-        return 1
-    fi
-}
-
-wait_for_apt() {
-    while apt-get check 2>&1 | grep -q "lock"; do sleep 5; done
-}
-
-export MENU_CHOICE=""
-render_menu() {
-    local title="$1"
-    shift
-    local options=("$@")
-    local cur=0
-    while [[ "${options[$cur]}" == ---* ]]; do ((cur++)); done
-    cursor_off
-    printf "\e[H\e[J"
-
-    while true; do
-        printf "\e[H"
-        draw_header "$title"
-        echo -e "${C_WHITE} [↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K\n\e[K"
-
-        for i in "${!options[@]}"; do
-            if [[ "${options[$i]}" == ---* ]]; then
-                echo -e "\n  ${C_ACCENT}${C_BOLD}${options[$i]}${C_BASE}\e[K"
-            elif [ "$i" -eq "$cur" ]; then
-                echo -e "${C_ACCENT}  > ${C_INV} ${options[$i]} ${C_BASE}\e[K"
-            else
-                echo -e "      ${options[$i]}\e[K"
-            fi
-        done
-        printf "\e[J"
-
-        if ! read -rsn3 key; then
-            cursor_on
-            echo -e "\n\e[31m[ ОШИБКА ] Потеряна связь с терминалом. Запусти утилиту вручную: aio_gentle\e[0m"
-            exit 1
-        fi
-
-        case "$key" in
-            $'\e[A') while true; do ((cur--)); [ "$cur" -lt 0 ] && cur=$((${#options[@]} - 1)); [[ "${options[$cur]}" != ---* ]] && break; done ;;
-            $'\e[B') while true; do ((cur++)); [ "$cur" -ge "${#options[@]}" ] && cur=0; [[ "${options[$cur]}" != ---* ]] && break; done ;;
-            "") cursor_on; MENU_CHOICE="$cur"; return 0 ;;
-        esac
-    done
-}
-
-for f in "$INSTALL_DIR"/modules/*.sh; do source "$f"; done
-
-step_update_script() {
-    echo -e "\n${C_ACCENT}[ ОБНОВЛЕНИЕ СКРИПТА ]${C_BASE}\n"
-    cd "$INSTALL_DIR" || exit
-    echo -e "  ${C_DIM}Синхронизация с GitHub...${C_BASE}"
-    git pull origin main >/dev/null 2>&1
-    echo -e "\n  ${C_OK}Скрипт успешно обновлен! Перезапуск...${C_BASE}"
-    sleep 1
-    exec /usr/local/bin/aio_gentle < /dev/tty
-}
-
-step_uninstall_script() {
-    echo -e "\n${C_ACCENT}[ УДАЛЕНИЕ СКРИПТА ]${C_BASE}\n"
     cursor_on
-    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Точно удалить утилиту? (y/n): ${C_BASE}")" CONFIRM
+    echo -e "  ${C_DIM}Настройка файрвола (UFW) может заблокировать доступ к серверу.${C_BASE}"
+    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Укажи текущий порт SSH [${default_port}]: ${C_BASE}")" USER_SSH
+    export USER_SSH=${USER_SSH:-$default_port}
+    
+    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Точно включить UFW и оставить порт ${USER_SSH} открытым? (y/n): ${C_BASE}")" CONFIRM
     cursor_off
-    if [[ ! "$CONFIRM" =~ ^[YyДд] ]]; then return 1; fi
-    rm -rf "$INSTALL_DIR" /usr/local/bin/aio_gentle /var/log/aio_setup.log
-    echo -e "  ${C_OK}Удалено! До встречи!${C_BASE}\n"
-    cursor_on; exit 0
+    
+    if [[ "$CONFIRM" =~ ^[YyДд] ]]; then
+        wait_for_apt
+        run_task "Установка и настройка UFW" "_do_ufw_setup"
+    else
+        echo -e "  ${C_ERR}Пропуск настройки UFW.${C_BASE}"
+    fi
+
+    if ! check_installed "command -v traffic-guard"; then
+        run_task "Установка Traffic-Guard" "_do_tg_install"
+    fi
 }
 
-options=(
-    "--- ПАНЕЛИ И ПРОКСИ ---"
-    "3x-ui"
-    "--- БАЗОВЫЕ НАСТРОЙКИ ---"
-    "Ядро XanMod" 
-    "BBR & TCP" 
-    "Swap (Подкачка)"
-    "--- СЕТЬ И ЗАЩИТА ---"
-    "Управление IPv6"
-    "Traffic-Guard & UFW" 
-    "Auto_IPtables & Bot Ban" 
-    "Управление SSL сертификатами"
-    "--- СЕРВИСЫ ---"
-    "Управление Docker"
-    "Управление AdGuard Home" 
-    "Управление Beszel" 
-    "Управление WARP" 
-    "--- ИНФОРМАЦИЯ ---"
-    "Speedtest (Ookla)"
-    "IP Region Check"
-    "Очистка и ротация логов"
-    "--- УПРАВЛЕНИЕ СКРИПТОМ ---"
-    "Обновить скрипт"
-    "Удалить скрипт"
-    "Обойти белые списки"
-    "Выход"
-)
-
-while read -r -t 0.1 -n 10000; do :; done
-
-while true; do
-    render_menu "AIO VPN GENTLE UTILITY v${SCRIPT_VERSION}" "${options[@]}"
-    choice=$MENU_CHOICE
-    NEEDS_PAUSE=1
+_do_bot_ban_logic() {
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y -qq
     
-    clear
-    case "${options[$choice]}" in
-        "3x-ui") step_3x_ui || NEEDS_PAUSE=0 ;;
-        "Ядро XanMod") step_kernel ;;
-        "BBR & TCP") step_network ;;
-        "Swap (Подкачка)") step_swap || NEEDS_PAUSE=0 ;;
-        "Управление IPv6") step_ipv6 || NEEDS_PAUSE=0 ;;
-        "Traffic-Guard & UFW") step_security ;;
-        "Auto_IPtables & Bot Ban") step_bot_protection ;;
-        "Управление SSL сертификатами") step_letsencrypt || NEEDS_PAUSE=0 ;;
-        "Управление Docker") step_docker || NEEDS_PAUSE=0 ;;
-        "Управление AdGuard Home") step_adguard || NEEDS_PAUSE=0 ;;
-        "Управление Beszel") step_beszel || NEEDS_PAUSE=0 ;;
-        "Управление WARP") step_warp || NEEDS_PAUSE=0 ;;
-        "Speedtest (Ookla)") step_speedtest ;;
-        "IP Region Check") step_ipregion ;;
-        "Очистка и ротация логов") step_logs ;;
-        "Обновить скрипт") step_update_script ;;
-        "Удалить скрипт") step_uninstall_script || NEEDS_PAUSE=0 ;;
-        "Обойти белые списки") step_bypass_whitelist ;;
-        "Выход") cursor_on; exit 0 ;;
-    esac
+    apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nftables curl python3 ipset iptables-persistent whois ufw
     
-    if [ "$NEEDS_PAUSE" -eq 1 ]; then
-        echo -e "\n${C_OK}Нажми любую клавишу для возврата в меню...${C_BASE}"
-        read -rsn1
-    fi
+    LIST_URL="https://raw.githubusercontent.com/Loorrr293/blocklist/main/blocklist.txt"
+    tee /usr/local/sbin/update-blocklist-nft.sh > /dev/null <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+URL="${1}"
+nft add table inet blocklist 2>/dev/null || true
+nft add set inet blocklist v4 '{ type ipv4_addr; flags interval; }' 2>/dev/null || true
+nft add set inet blocklist v6 '{ type ipv6_addr; flags interval; }' 2>/dev/null || true
+nft add chain inet blocklist input '{ type filter hook input priority raw; policy accept; }' 2>/dev/null || true
+nft list chain inet blocklist input | grep -q '@v4' || nft add rule inet blocklist input ip saddr @v4 drop
+nft list chain inet blocklist input | grep -q '@v6' || nft add rule inet blocklist input ip6 saddr @v6 drop
+
+tmp="$(mktemp)"; cleaned="$(mktemp)"; v4="$(mktemp)"; v6="$(mktemp)"; nf="$(mktemp)"
+trap 'rm -f "$tmp" "$cleaned" "$v4" "$v6" "$nf"' EXIT
+
+curl -fsSL "$URL" > "$tmp"
+sed 's/#.*//g' "$tmp" | tr -s ' \t\r' '\n' | sed '/^$/d' | sort -u > "$cleaned"
+
+if [[ ! -s "$cleaned" ]]; then exit 1; fi
+
+python3 - "$cleaned" > "$v4" <<'PY'
+import sys, ipaddress
+path = sys.argv[1]
+nets=[]
+for line in open(path,'r',encoding='utf-8',errors='ignore'):
+    s=line.strip()
+    if not s or ':' in s: continue
+    try: nets.append(ipaddress.ip_network(s, strict=False))
+    except ValueError: pass
+collapsed = sorted(ipaddress.collapse_addresses(nets), key=lambda n:(int(n.network_address), n.prefixlen))
+for n in collapsed: print(n.with_prefixlen)
+PY
+
+python3 - "$cleaned" > "$v6" <<'PY'
+import sys, ipaddress
+path = sys.argv[1]
+nets=[]
+for line in open(path,'r',encoding='utf-8',errors='ignore'):
+    s=line.strip()
+    if not s or ':' not in s: continue
+    try: nets.append(ipaddress.ip_network(s, strict=False))
+    except ValueError: pass
+collapsed = sorted(ipaddress.collapse_addresses(nets), key=lambda n:(int(n.network_address), n.prefixlen))
+for n in collapsed: print(n.with_prefixlen)
+PY
+
+{
+  echo "flush set inet blocklist v4"
+  echo "flush set inet blocklist v6"
+  if [[ -s "$v4" ]]; then echo -n "add element inet blocklist v4 { "; paste -sd, "$v4"; echo " }"; fi
+  if [[ -s "$v6" ]]; then echo -n "add element inet blocklist v6 { "; paste -sd, "$v6"; echo " }"; fi
+} > "$nf"
+
+nft -f "$nf"
+SH
+    chmod +x /usr/local/sbin/update-blocklist-nft.sh
+    tee /etc/systemd/system/blocklist-update.service > /dev/null <<UNIT
+[Unit]
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/update-blocklist-nft.sh ${LIST_URL}
+UNIT
+    tee /etc/systemd/system/blocklist-update.timer > /dev/null <<'TIMER'
+[Timer]
+OnBootSec=1min
+OnCalendar=daily
+Persistent=true
+[Install]
+WantedBy=timers.target
+TIMER
+    systemctl daemon-reload
+    systemctl enable --now blocklist-update.timer
+    systemctl start blocklist-update.service
+
+    cat << 'EOF' > /usr/local/bin/block_leaseweb.sh
+#!/bin/bash
+ASNS=("AS16265" "AS60781" "AS28753" "AS30633" "AS38731" "AS49367" "AS51395" "AS50673" "AS59253" "AS133752" "AS134351" "AS6939")
+ipset create leaseweb_v4 hash:net family inet hashsize 4096 maxelem 131072 2>/dev/null
+ipset create leaseweb_v6 hash:net family inet6 hashsize 4096 maxelem 131072 2>/dev/null
+ipset create tmp_v4 hash:net family inet hashsize 4096 maxelem 131072 2>/dev/null
+ipset flush tmp_v4
+ipset create tmp_v6 hash:net family inet6 hashsize 4096 maxelem 131072 2>/dev/null
+ipset flush tmp_v6
+for ASN in "${ASNS[@]}"; do
+    whois -h whois.radb.net -- "-i origin $ASN" | grep -E '^route:' | awk '{print $2}' | while read -r ip; do ipset add tmp_v4 $ip -quiet; done
+    whois -h whois.radb.net -- "-i origin $ASN" | grep -E '^route6:' | awk '{print $2}' | while read -r ip; do ipset add tmp_v6 $ip -quiet; done
 done
+ipset swap leaseweb_v4 tmp_v4
+ipset swap leaseweb_v6 tmp_v6
+ipset destroy tmp_v4
+ipset destroy tmp_v6
+ipset save > /etc/ipset.conf
+EOF
+    chmod +x /usr/local/bin/block_leaseweb.sh
+
+    cat << 'EOF' > /etc/systemd/system/ipset-persistent.service
+[Unit]
+Description=Restore ipset sets before iptables
+Before=network.target netfilter-persistent.service
+ConditionFileNotEmpty=/etc/ipset.conf
+[Service]
+Type=oneshot
+ExecStart=/sbin/ipset restore -file /etc/ipset.conf
+ExecStop=/sbin/ipset save -file /etc/ipset.conf
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload > /dev/null 2>&1
+    systemctl enable ipset-persistent > /dev/null 2>&1
+    /usr/local/bin/block_leaseweb.sh
+    
+    iptables -D INPUT -m set --match-set leaseweb_v4 src -j DROP 2>/dev/null || true
+    iptables -D OUTPUT -m set --match-set leaseweb_v4 dst -j DROP 2>/dev/null || true
+    iptables -D FORWARD -m set --match-set leaseweb_v4 src,dst -j DROP 2>/dev/null || true
+    ip6tables -D INPUT -m set --match-set leaseweb_v6 src -j DROP 2>/dev/null || true
+    ip6tables -D OUTPUT -m set --match-set leaseweb_v6 dst -j DROP 2>/dev/null || true
+    ip6tables -D FORWARD -m set --match-set leaseweb_v6 src,dst -j DROP 2>/dev/null || true
+
+    iptables -I INPUT -m set --match-set leaseweb_v4 src -j DROP
+    iptables -I OUTPUT -m set --match-set leaseweb_v4 dst -j DROP
+    iptables -I FORWARD -m set --match-set leaseweb_v4 src,dst -j DROP
+
+    ip6tables -I INPUT -m set --match-set leaseweb_v6 src -j DROP
+    ip6tables -I OUTPUT -m set --match-set leaseweb_v6 dst -j DROP
+    ip6tables -I FORWARD -m set --match-set leaseweb_v6 src,dst -j DROP
+
+    netfilter-persistent save > /dev/null 2>&1
+    (crontab -l 2>/dev/null | grep -v "block_leaseweb.sh"; echo "0 3 * * 1 /usr/local/bin/block_leaseweb.sh && netfilter-persistent save > /dev/null 2>&1") | crontab -
+}
+
+step_bot_protection() {
+    echo -e "\n${C_ACCENT}[ 09 ] AUTO_IPTABLES & BOT BAN${C_BASE}\n"
+    if check_installed "[ -f /usr/local/bin/block_leaseweb.sh ]"; then return; fi
+    wait_for_apt
+    run_task "Установка правил iptables и защит" "_do_bot_ban_logic"
+
+    local count_v4=$(ipset list leaseweb_v4 2>/dev/null | grep -c '/' || true)
+    local count_v6=$(ipset list leaseweb_v6 2>/dev/null | grep -c '/' || true)
+    
+    echo -e "  ${C_DIM}-------------------------------------------------------${C_BASE}"
+    echo -e "  ${C_WHITE}ИТОГ: Забанено ${C_ACCENT}${count_v4}${C_WHITE} IPv4 и ${C_ACCENT}${count_v6}${C_WHITE} IPv6 подсетей.${C_BASE}"
+    
+    if ping -c 1 -W 1 85.17.70.38 > /dev/null 2>&1; then echo -e "  ${C_ERR}ТЕСТ: Leaseweb НЕ заблокирован!${C_BASE}"
+    else echo -e "  ${C_OK}ТЕСТ: Leaseweb заблокирован.${C_BASE}"; fi
+    
+    if ping -c 1 -W 1 74.82.46.6 > /dev/null 2>&1; then echo -e "  ${C_ERR}ТЕСТ: Hurricane Electric НЕ заблокирован!${C_BASE}"
+    else echo -e "  ${C_OK}ТЕСТ: Hurricane Electric заблокирован.${C_BASE}"; fi
+    echo -e "  ${C_DIM}-------------------------------------------------------${C_BASE}\n"
+}
