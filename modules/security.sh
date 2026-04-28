@@ -39,7 +39,8 @@ step_security() {
 _do_bot_ban_logic() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nftables curl python3 ipset iptables-persistent whois
+    # Добавлен ufw в список установки, чтобы apt не удалил его как конфликтующий пакет
+    apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nftables curl python3 ipset iptables-persistent whois ufw
     
     LIST_URL="https://raw.githubusercontent.com/Loorrr293/blocklist/main/blocklist.txt"
     tee /usr/local/sbin/update-blocklist-nft.sh > /dev/null <<'SH'
