@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="2.2"
+export SCRIPT_VERSION="2.3"
 export INSTALL_DIR="/opt/aio_gentle"
 export LOG_FILE="/var/log/aio_setup.log"
 
@@ -25,6 +25,12 @@ export C_BOLD='\e[1m'
 cursor_off() { printf "\e[?25l"; }
 cursor_on()  { printf "\e[?25h"; }
 trap "cursor_on; echo; exit" SIGINT
+
+pause() {
+    cursor_off
+    echo -e "\n${C_OK}Нажми любую клавишу для возврата в меню...${C_BASE}"
+    read -rsn1
+}
 
 draw_header() {
     local title="$1"
@@ -221,7 +227,7 @@ while true; do
         "BBR & TCP") step_network ;;
         "Swap (Подкачка)") step_swap || NEEDS_PAUSE=0 ;;
         "Управление IPv6") step_ipv6 || NEEDS_PAUSE=0 ;;
-        "Traffic-Guard & UFW") step_security ;;
+        "Traffic-Guard & UFW") step_security || NEEDS_PAUSE=0 ;;
         "Auto_IPtables & Bot Ban") step_bot_protection ;;
         "Управление SSL сертификатами") step_letsencrypt || NEEDS_PAUSE=0 ;;
         "Управление Docker") step_docker || NEEDS_PAUSE=0 ;;
@@ -238,8 +244,6 @@ while true; do
     esac
     
     if [ "$NEEDS_PAUSE" -eq 1 ]; then
-        cursor_off
-        echo -e "\n${C_OK}Нажми любую клавишу для возврата в меню...${C_BASE}"
-        read -rsn1
+        pause
     fi
 done
