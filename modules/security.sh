@@ -13,8 +13,7 @@ _do_tg_install() {
     bash /tmp/tg_install.sh
 }
 
-step_security() {
-    echo -e "\n${C_ACCENT}[ 08 ] TRAFFIC-GUARD & UFW${C_BASE}\n"
+_setup_firewalls() {
     local default_port=$(ss -tlnp 2>/dev/null | grep sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
     default_port=${default_port:-22}
     
@@ -38,10 +37,43 @@ step_security() {
     fi
 }
 
+step_security() {
+    local opts=("Установить UFW и Traffic-Guard" "Остановить Traffic-Guard (Пауза)" "Запустить Traffic-Guard" "Открыть порт (UFW)" "Закрыть порт (UFW)" "Назад")
+    while true; do
+        render_menu "TRAFFIC-GUARD & UFW" "${opts[@]}"
+        clear
+        case $MENU_CHOICE in
+            0) echo -e "\n${C_ACCENT}[ УСТАНОВКА ЗАЩИТЫ ]${C_BASE}\n"; _setup_firewalls; pause ;;
+            1) 
+               echo -e "\n${C_ACCENT}[ TRAFFIC-GUARD ]${C_BASE}\n"
+               run_task "Остановка сервиса" "systemctl stop traffic-guard 2>/dev/null || true"
+               pause ;;
+            2) 
+               echo -e "\n${C_ACCENT}[ TRAFFIC-GUARD ]${C_BASE}\n"
+               run_task "Запуск сервиса" "systemctl start traffic-guard 2>/dev/null || true"
+               pause ;;
+            3)
+               echo -e "\n${C_ACCENT}[ UFW ] ОТКРЫТИЕ ПОРТА${C_BASE}\n"
+               cursor_on
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
+               cursor_off
+               if [ -n "$ufw_port" ]; then run_task "Открытие $ufw_port" "ufw allow $ufw_port >/dev/null 2>&1"; fi
+               pause ;;
+            4)
+               echo -e "\n${C_ACCENT}[ UFW ] ЗАКРЫТИЕ ПОРТА${C_BASE}\n"
+               cursor_on
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
+               cursor_off
+               if [ -n "$ufw_port" ]; then run_task "Закрытие $ufw_port" "ufw delete allow $ufw_port >/dev/null 2>&1"; fi
+               pause ;;
+            5) return 1 ;;
+        esac
+    done
+}
+
 _do_bot_ban_logic() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    # ufw добавлен сюда, чтобы apt не удалил его при установке nftables
     apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nftables curl python3 ipset iptables-persistent whois ufw
     
     LIST_URL="https://raw.githubusercontent.com/Loorrr293/blocklist/main/blocklist.txt"
