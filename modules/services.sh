@@ -153,8 +153,9 @@ _setup_3x_ui() {
 
 _manage_3x_ui() {
     if [ ! -d /usr/local/x-ui ]; then
+        echo -e "\n${C_ACCENT}[ УПРАВЛЕНИЕ 3X-UI ]${C_BASE}\n"
         cursor_on
-        read -p "$(echo -e "  ${C_ERR}Панель не установлена! Установить? (y/n): ${C_BASE}")" want_install
+        read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Панель не установлена! Установить? (y/n): ${C_BASE}")" want_install
         cursor_off
         if [[ "$want_install" =~ ^[YyДд] ]]; then clear; _setup_3x_ui; fi
         return
@@ -165,7 +166,7 @@ _manage_3x_ui() {
         local choice=$MENU_CHOICE
         if [ "$choice" -eq 7 ]; then return 0; fi
         clear
-        echo -e "\n${C_ACCENT}[ 3X-UI ] ВЫПОЛНЕНИЕ КОМАНДЫ${C_BASE}\n"
+        echo -e "\n${C_ACCENT}[ УПРАВЛЕНИЕ 3X-UI ] ВЫПОЛНЕНИЕ КОМАНДЫ${C_BASE}\n"
         case $choice in
             0) run_task "Запуск службы" "systemctl start x-ui" ;;
             1) run_task "Остановка службы" "systemctl stop x-ui" ;;
@@ -175,7 +176,8 @@ _manage_3x_ui() {
                local new_user=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
                local new_pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 12 | head -n 1)
                run_task "Смена данных" "/usr/local/x-ui/x-ui setting -username $new_user -password $new_pass"
-               echo -e "  ${C_OK}Новые данные: ${C_WHITE}$new_user / $new_pass${C_BASE}"
+               echo -e "  ${C_WHITE}Логин: ${C_BASE}  $new_user"
+               echo -e "  ${C_WHITE}Пароль:${C_BASE} $new_pass"
                systemctl restart x-ui ;;
             5)
                local new_path=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)
@@ -184,7 +186,7 @@ _manage_3x_ui() {
                systemctl restart x-ui ;;
             6) run_task "Сброс сети" "/usr/local/x-ui/x-ui clear_network" ;;
         esac
-        echo -e "\n${C_OK}Нажми любую клавишу...${C_BASE}"; read -rsn1
+        pause
     done
 }
 
@@ -203,7 +205,7 @@ step_3x_ui() {
     while true; do
         render_menu "ПАНЕЛЬ 3X-UI" "${opts[@]}"
         case $MENU_CHOICE in
-            0) clear; _setup_3x_ui; echo -e "\n${C_OK}Нажми любую клавишу...${C_BASE}"; read -rsn1 ;;
+            0) clear; _setup_3x_ui; pause ;;
             1) clear; _manage_3x_ui ;;
             2) clear; _uninstall_3x_ui ;;
             3) return 1 ;;
@@ -230,8 +232,8 @@ step_docker() {
         render_menu "УПРАВЛЕНИЕ DOCKER" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка Docker" "_do_docker_install"; run_task "Запуск Docker" "_do_docker_start"; return 0 ;;
-            1) run_task "Удаление Docker" "_do_docker_uninstall"; return 0 ;;
+            0) run_task "Установка Docker" "_do_docker_install"; run_task "Запуск Docker" "_do_docker_start"; pause ;;
+            1) run_task "Удаление Docker" "_do_docker_uninstall"; pause ;;
             2) return 1 ;;
         esac
     done
@@ -269,9 +271,9 @@ step_adguard() {
         render_menu "УПРАВЛЕНИЕ ADGUARD HOME" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) _install_adguard; return 0 ;;
-            1) run_task "Обновление" "_do_adguard_update"; return 0 ;;
-            2) run_task "Удаление" "_do_adguard_uninstall"; return 0 ;;
+            0) _install_adguard; pause ;;
+            1) run_task "Обновление" "_do_adguard_update"; pause ;;
+            2) run_task "Удаление" "_do_adguard_uninstall"; pause ;;
             3) return 1 ;;
         esac
     done
@@ -349,7 +351,7 @@ step_beszel() {
         render_menu "УПРАВЛЕНИЕ BESZEL" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка HUB" "_do_beszel_hub"; return 0 ;;
+            0) run_task "Установка HUB" "_do_beszel_hub"; pause ;;
             1) 
                cursor_on
                read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Public Key (обязательно): ${C_BASE}")" B_KEY
@@ -358,8 +360,8 @@ step_beszel() {
                export B_KEY B_TOKEN B_URL
                cursor_off
                if [ -n "$B_KEY" ]; then run_task "Установка Agent" "_do_beszel_agent"; fi
-               return 0 ;;
-            2) run_task "Удаление Beszel" "_do_beszel_uninstall"; return 0 ;;
+               pause ;;
+            2) run_task "Удаление Beszel" "_do_beszel_uninstall"; pause ;;
             3) return 1 ;;
         esac
     done
@@ -367,10 +369,10 @@ step_beszel() {
 
 # -------------------- WARP --------------------
 _do_warp_install() {
-    bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/install.sh)
+    curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/install.sh | bash
 }
 _do_warp_uninstall() {
-    bash <(curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/uninstall.sh)
+    curl -fsSL https://raw.githubusercontent.com/distillium/warp-native/main/uninstall.sh | bash
 }
 
 step_warp() {
@@ -379,8 +381,8 @@ step_warp() {
         render_menu "УПРАВЛЕНИЕ WARP" "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) run_task "Установка WARP" "_do_warp_install"; return 0 ;;
-            1) run_task "Удаление WARP" "_do_warp_uninstall"; return 0 ;;
+            0) run_task "Установка WARP" "_do_warp_install"; pause ;;
+            1) run_task "Удаление WARP" "_do_warp_uninstall"; pause ;;
             2) return 1 ;;
         esac
     done
