@@ -37,7 +37,9 @@ _install_cert() {
     
     if [ -d "/etc/letsencrypt/live/$LE_DOMAIN" ]; then
         echo "$LE_DOMAIN|$(date +%s)" >> /etc/aio_certs.db
-        echo -e "\n  ${C_OK}Сертификат для ${C_WHITE}${LE_DOMAIN}${C_OK} получен.${C_BASE}"
+        echo -e "\n  ${C_OK}Сертификат для ${C_WHITE}${LE_DOMAIN}${C_OK} получен.${C_BASE}\n"
+        echo -e "  ${C_WHITE}Путь к сертификату: /etc/letsencrypt/live/${LE_DOMAIN}/fullchain.pem${C_BASE}"
+        echo -e "  ${C_WHITE}Путь к ключу:       /etc/letsencrypt/live/${LE_DOMAIN}/privkey.pem${C_BASE}"
     fi
 }
 
