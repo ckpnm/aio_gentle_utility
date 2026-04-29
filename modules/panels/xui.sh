@@ -90,7 +90,7 @@ render_xui_menu() {
     done
 }
 
-# Широкий кастомный прогресс-бар для X-UI (Кружки)
+# Широкий кастомный прогресс-бар для X-UI (Кружки без скобок)
 _draw_xui_progress() {
     local pid=$1
     local width=37; local p=0; local delay=0.1; local ticks=0
@@ -99,7 +99,7 @@ _draw_xui_progress() {
         for ((i=0; i<width; i++)); do
             if [ $i -lt $p ]; then bar+="●"; else bar+="○"; fi
         done
-        printf "\e[u\e[38;5;51m(%s)\e[0m" "$bar"
+        printf "\e[u\e[38;5;51m%s\e[0m" "$bar"
         sleep $delay
         ((ticks++))
         if [ $p -lt $((width * 6 / 10)) ]; then
@@ -112,7 +112,7 @@ _draw_xui_progress() {
     done
     local full_bar=""
     for ((i=0; i<width; i++)); do full_bar+="●"; done
-    printf "\e[u\e[38;5;51m(%s)\e[0m" "$full_bar"
+    printf "\e[u\e[38;5;51m%s\e[0m" "$full_bar"
 }
 
 # Запуск задачи с отдельным экраном
@@ -207,7 +207,7 @@ _do_config_3xui() {
 }
 
 draw_dynamic_success_box() {
-    clear # Очищаем экран от логов установки
+    clear
     local user="$1"
     local pass="$2"
     local port="$3"
@@ -240,14 +240,13 @@ draw_dynamic_success_box() {
     
     local box_width=$((max_len + 4))
     
-    local top_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
-    local top_box="${c_light}╭${top_dashes}╮${c_reset}"
+    # Жесткий цикл for защищает от поломки юникода в разных терминалах
+    local h_line=""
+    for ((i=0; i<box_width; i++)); do h_line+="─"; done
     
-    local bot_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
-    local bot_box="${c_dark}╰${bot_dashes}╯${c_reset}"
-    
-    local mid_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
-    local sep_box="${c_dark}├${mid_dashes}${c_reset}${c_light}┤${c_reset}"
+    local top_box="${c_light}╭${h_line}╮${c_reset}"
+    local bot_box="${c_dark}╰${h_line}╯${c_reset}"
+    local sep_box="${c_dark}├${h_line}${c_reset}${c_light}┤${c_reset}"
 
     local pipe_l="${c_dark}│${c_reset}"
     local pipe_r="${c_light}│${c_reset}"
@@ -291,7 +290,6 @@ draw_dynamic_success_box() {
 _setup_3x_ui() {
     if check_installed "[ -d /usr/local/x-ui ]"; then return; fi
 
-    # Селектор для порта
     local port_opts=("Сгенерировать случайный порт" "Указать свой порт")
     render_xui_menu "ПОРТ ПАНЕЛИ 3X-UI" "${port_opts[@]}"
     if [ "$MENU_CHOICE" -eq 1 ]; then
