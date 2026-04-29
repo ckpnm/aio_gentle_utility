@@ -2,7 +2,7 @@
 
 export SCRIPT_VERSION="1.01"
 export GITHUB_URL="https://github.com/ckpnm/aio_gentle"
-export UPDATE_NEEDED=1 # Установи 1, если скрипт устарел
+export UPDATE_NEEDED=0
 
 # Реальный путь к main.sh, даже если он запущен через симлинк
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
@@ -40,6 +40,17 @@ pause() {
     read -rsn1
 }
 
+check_updates() {
+    # Быстрый запрос к GitHub для проверки версии
+    local remote_version
+    remote_version=$(curl -s --max-time 2 "https://raw.githubusercontent.com/ckpnm/aio_gentle/main/main.sh" | grep -m 1 'export SCRIPT_VERSION=' | cut -d'"' -f2)
+    
+    if [[ -n "$remote_version" && "$remote_version" != "$SCRIPT_VERSION" ]]; then
+        UPDATE_NEEDED=1
+        export REMOTE_VERSION="$remote_version"
+    fi
+}
+
 draw_header() {
     local total_width=37
     
@@ -49,9 +60,9 @@ draw_header() {
         ver_color="\e[1;31m" # Красный, если устарела
     fi
 
-    # Сборка строки заголовка
-    local title_text="A I O - G E N T L E v"
-    local ver_text="${SCRIPT_VERSION}"
+    # Сборка строки заголовка (буква 'v' теперь часть версии)
+    local title_text="A I O - G E N T L E "
+    local ver_text="v${SCRIPT_VERSION}"
     local title_len=$(( ${#title_text} + ${#ver_text} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
     local pad_right=$(( total_width - title_len - pad_left ))
@@ -66,11 +77,11 @@ draw_header() {
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-    # Отрисовка с градиентом (96m - яркий циан для углов, 36m - стандартный циан для линий)
-    echo -e "\n\e[96m╭\e[36m─────────────────────────────────────\e[96m╮"
-    echo -e "\e[36m│${p_l}\e[1;37m${title_text}${ver_color}${ver_text}\e[36m${p_r}│\e[0m"
-    echo -e "\e[36m│${sp_l}\e[90m${sub_text}\e[36m${sp_r}│\e[0m"
-    echo -e "\e[96m╰\e[36m─────────────────────────────────────\e[96m╯\e[0m"
+    # Отрисовка с градиентом: 1;36m (яркий) для углов, 0;36m (тусклый) для линий
+    echo -e "\n\e[1;36m╭\e[0;36m─────────────────────────────────────\e[1;36m╮"
+    echo -e "\e[0;36m│${p_l}\e[1;37m${title_text}${ver_color}${ver_text}\e[0;36m${p_r}│\e[0m"
+    echo -e "\e[0;36m│${sp_l}\e[90m${sub_text}\e[0;36m${sp_r}│\e[0m"
+    echo -e "\e[1;36m╰\e[0;36m─────────────────────────────────────\e[1;36m╯\e[0m"
 }
 
 _draw_progress() {
@@ -112,22 +123,26 @@ render_menu() {
         echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K"
         echo -e " ${C_DIM}GitHub: ${GITHUB_URL}${C_BASE}\e[K"
         if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
-            echo -e " \e[31m● - Требуется обновление\e[0m\e[K"
+            echo -e " \e[31m● - Требуется обновление (Доступна: v${REMOTE_VERSION})\e[0m\e[K"
         fi
-        echo -e "\e[K\n"
+        
+        # Одинарный отступ перед началом меню
+        echo -e "\e[K"
 
         for i in "${!options[@]}"; do
             if [[ "${options[$i]}" == ---* ]]; then
-                # Заголовки категорий
                 local clean_title="${options[$i]#--- }"
                 clean_title="${clean_title% ---}"
-                echo -e "\n  ${C_DIM}::${C_BASE} ${C_ACCENT}${C_BOLD}${clean_title}${C_BASE} ${C_DIM}::${C_BASE}\e[K"
+                echo -e "  ${C_DIM}::${C_BASE} ${C_ACCENT}${C_BOLD}${clean_title}${C_BASE} ${C_DIM}::${C_BASE}\e[K"
             elif [ "$i" -eq "$cur" ]; then
-                # Выбранный пункт
                 echo -e "  ${C_ACCENT}● [ ${options[$i]} ]${C_BASE}\e[K"
             else
-                # Обычный пункт
                 echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
+            fi
+            
+            # Добавляем пустую строку после каждой категории для визуального разделения
+            if [[ "${options[$i+1]}" == ---* ]]; then
+                echo -e "\e[K"
             fi
         done
         printf "\e[J"
@@ -183,6 +198,35 @@ safe_download() { curl -sSL "$1" > "$2"; }
 check_installed() { eval "$1" >/dev/null 2>&1 && { echo -e "\n  ${C_OK}[ ИНФО ]${C_BASE} Компонент уже установлен."; return 0; } || return 1; }
 wait_for_apt() { while apt-get check 2>&1 | grep -q "lock"; do sleep 5; done; }
 
+# Функции управления скриптом
+step_update_script() {
+    echo -e "\n${C_ACCENT}Обновление скрипта...${C_BASE}"
+    if curl -s --max-time 10 "https://raw.githubusercontent.com/ckpnm/aio_gentle/main/main.sh" -o "$SCRIPT_DIR/main.sh"; then
+        chmod +x "$SCRIPT_DIR/main.sh"
+        echo -e "${C_OK}Скрипт успешно обновлен! Перезапуск...${C_BASE}"
+        sleep 2
+        exec bash "$SCRIPT_DIR/main.sh"
+    else
+        echo -e "${C_ERR}Ошибка при скачивании обновления. Проверьте подключение к сети.${C_BASE}"
+        return 1
+    fi
+}
+
+step_uninstall_script() {
+    echo -e "\n${C_ERR}ВНИМАНИЕ: Это действие полностью удалит AIO Gentle Utility.${C_BASE}"
+    read -p "Вы уверены, что хотите удалить скрипт? (y/n): " confirm
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        echo -e "Удаление файлов..."
+        rm -rf "$SCRIPT_DIR"
+        rm -f /usr/local/bin/aio_gentle
+        echo -e "${C_OK}Скрипт удален. Выход...${C_BASE}"
+        cursor_on
+        exit 0
+    else
+        echo -e "Удаление отменено."
+    fi
+}
+
 # ==========================================
 # ПОДГРУЗКА ВСЕХ МОДУЛЕЙ (Рекурсивно)
 # ==========================================
@@ -231,6 +275,9 @@ options=(
     "Выход"
 )
 
+# Проверяем обновления один раз при запуске
+check_updates
+
 while true; do
     render_menu "${options[@]}"
     choice=$MENU_CHOICE
@@ -258,9 +305,15 @@ while true; do
         "IP Region Check") step_ipregion ;;
         "Очистка и ротация логов") step_logs ;;
         "Обойти белые списки") step_bypass_whitelist ;;
-        "Обновить скрипт") step_update_script || NEEDS_PAUSE=0 ;;
-        "Удалить скрипт") step_uninstall_script || NEEDS_PAUSE=0 ;;
-        "Информация") step_info || NEEDS_PAUSE=0 ;;
+        "Обновить скрипт") step_update_script ;;
+        "Удалить скрипт") step_uninstall_script ;;
+        "Информация") 
+            if [ -f "$MODULES_DIR/info.sh" ]; then
+                bash "$MODULES_DIR/info.sh"
+            else
+                echo -e "${C_ERR}Файл info.sh не найден в ${MODULES_DIR}${C_BASE}"
+            fi
+            ;;
         "Выход") cursor_on; exit 0 ;;
     esac
     
