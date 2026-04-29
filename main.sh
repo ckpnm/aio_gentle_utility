@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="1.05"
-export GITHUB_URL="https://github.com/ckpnm/aio_gentle"
-export UPDATE_NEEDED=1
+export SCRIPT_VERSION="1.06"
+export GITHUB_URL="https://github.com/ckpnm/aio_gentle_utility"
+export UPDATE_NEEDED=0
 
 # Реальный путь к main.sh, даже если он запущен через симлинк
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
@@ -43,10 +43,11 @@ pause() {
 check_updates() {
     local remote_version
     
-    remote_version=$(curl -s --max-time 3 "https://raw.githubusercontent.com/ckpnm/aio_gentle/main/main.sh?t=$RANDOM" | grep -E '^export SCRIPT_VERSION=' | awk -F'=' '{print $2}' | tr -d '"'\''')
+    
+    remote_version=$(curl -s --max-time 3 "https://raw.githubusercontent.com/ckpnm/aio_gentle_utility/main/main.sh?t=$RANDOM" | grep -E '^export SCRIPT_VERSION=' | awk -F'=' '{print $2}' | tr -d '"'\''')
     
     if [[ -n "$remote_version" && "$remote_version" != "$SCRIPT_VERSION" ]]; then
-        UPDATE_NEEDED=1
+        export UPDATE_NEEDED=1
         export REMOTE_VERSION="$remote_version"
     fi
 }
@@ -63,10 +64,12 @@ draw_header() {
     local ver_color="$c_white"
     [[ "$UPDATE_NEEDED" -eq 1 ]] && ver_color="$c_red"
 
-    # Высчитываем пробелы, чтобы текст всегда был по центру рамки
+    
     local total_width=37
-    local title_text="A I O - G E N T L E v"
-    local title_len=$(( ${#title_text} + ${#SCRIPT_VERSION} ))
+   
+    local title_text="A I O - G E N T L E "
+    local ver_text="v${SCRIPT_VERSION}"
+    local title_len=$(( ${#title_text} + ${#ver_text} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
     local pad_right=$(( total_width - title_len - pad_left ))
     
@@ -82,7 +85,7 @@ draw_header() {
 
     # Отрисовка: Градиент рамки прописан жестко прямо в строках
     echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
-    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${ver_text}${c_reset}${c_light}${p_r}│${c_reset}"
     echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
@@ -122,13 +125,11 @@ render_menu() {
         printf "\e[H"
         draw_header
         
-        
         echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K"
         echo -e " ${C_DIM}GitHub: ${GITHUB_URL}${C_BASE}\e[K"
         if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
-            echo -e " \e[31m● - Требуется обновление (Доступна: v${REMOTE_VERSION})\e[0m\e[K"
+            echo -e " \e[31m● - Требуется обновление (Актуальный билд: v${REMOTE_VERSION})\e[0m\e[K"
         fi
-        
         
         echo -e "\e[K"
 
@@ -142,7 +143,6 @@ render_menu() {
             else
                 echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
             fi
-            
             
             if [[ "${options[$i+1]}" == ---* ]]; then
                 echo -e "\e[K"
@@ -201,10 +201,11 @@ safe_download() { curl -sSL "$1" > "$2"; }
 check_installed() { eval "$1" >/dev/null 2>&1 && { echo -e "\n  ${C_OK}[ ИНФО ]${C_BASE} Компонент уже установлен."; return 0; } || return 1; }
 wait_for_apt() { while apt-get check 2>&1 | grep -q "lock"; do sleep 5; done; }
 
-# Функции управления скриптом
+
 step_update_script() {
     echo -e "\n${C_ACCENT}Обновление скрипта...${C_BASE}"
-    if curl -s --max-time 10 "https://raw.githubusercontent.com/ckpnm/aio_gentle/main/main.sh" -o "$SCRIPT_DIR/main.sh"; then
+    
+    if curl -s --max-time 10 "https://raw.githubusercontent.com/ckpnm/aio_gentle_utility/main/main.sh" -o "$SCRIPT_DIR/main.sh"; then
         chmod +x "$SCRIPT_DIR/main.sh"
         echo -e "${C_OK}Скрипт успешно обновлен! Перезапуск...${C_BASE}"
         sleep 2
@@ -231,7 +232,7 @@ step_uninstall_script() {
 }
 
 # ==========================================
-# ПОДГРУЗКА ВСЕХ МОДУЛЕЙ (Рекурсивно)
+# ПОДГРУЗКА ВСЕХ МОДУЛЕЙ
 # ==========================================
 if [ ! -d "$MODULES_DIR" ]; then
     echo -e "${C_ERR}[ ОШИБКА ] Директория modules/ не найдена по пути: $MODULES_DIR${C_BASE}"
@@ -278,7 +279,7 @@ options=(
     "Выход"
 )
 
-# Проверяем обновления один раз при запуске
+# Проверка обновления
 check_updates
 
 while true; do
