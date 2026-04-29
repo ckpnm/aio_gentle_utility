@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="1.04"
+export SCRIPT_VERSION="1.05"
 export GITHUB_URL="https://github.com/ckpnm/aio_gentle"
 export UPDATE_NEEDED=0
 
@@ -52,27 +52,24 @@ check_updates() {
 }
 
 draw_header() {
-    local total_width=37
+    # Цветовая палитра
+    local c_light="\e[38;5;51m"   # Яркий циан
+    local c_dark="\e[38;5;24m"    # Темный циан
+    local c_white="\e[38;5;255m"  # Белый
+    local c_gray="\e[38;5;244m"   # Серый
+    local c_red="\e[38;5;196m"    # Красный
+    local c_reset="\e[0m"         # Сброс
 
-    # ANSI256 
-    local c_light="\e[38;5;51m"   # Яркий неоновый циан (для ярких элементов)
-    local c_dark="\e[38;5;24m"    # Глубокий темный циан (для темных элементов)
-    local c_white="\e[38;5;255m"  # Чистый белый (для основного текста)
-    local c_gray="\e[38;5;244m"   # Серый (для подписи "by gpfme")
-    local c_red="\e[38;5;196m"    # Красный (для устаревшей версии)
-
-    
     local ver_color="$c_white"
-    if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
-        ver_color="$c_red"
-    fi
+    [[ "$UPDATE_NEEDED" -eq 1 ]] && ver_color="$c_red"
 
-   
+    # Высчитываем пробелы, чтобы текст всегда был по центру рамки
+    local total_width=37
     local title_text="A I O - G E N T L E v"
-    local ver_text="${SCRIPT_VERSION}"
-    local title_len=$(( ${#title_text} + ${#ver_text} ))
+    local title_len=$(( ${#title_text} + ${#SCRIPT_VERSION} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
     local pad_right=$(( total_width - title_len - pad_left ))
+    
     local p_l=$(printf "%${pad_left}s" "")
     local p_r=$(printf "%${pad_right}s" "")
 
@@ -83,30 +80,11 @@ draw_header() {
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-   
-    local top_box_start_dark="${c_dark}╭──${c_light}"
-    local top_box_end_dark="${c_dark}─╮${c_light}"
-    local top_box_dashes_bright=$(printf "%34s" "" | tr ' ' '─')
-
-    local mid_box_pipes_bright="${c_light}│${c_white}"
-
-   
-    local bottom_box_all_dark="${c_dark}╰"
-    bottom_box_all_dark+=$(printf "%${total_width}s" "" | tr ' ' '─')
-    bottom_box_all_dark+="╯${c_light}"
-
-
-    
-    echo -e ""
-    
-    echo -e "${top_box_start_dark}${top_box_dashes_bright}${top_box_end_dark}\e[0m"
-
-    
-    echo -e "${c_light}│\e[0m${p_l}${c_white}${C_BOLD}${title_text}${ver_color}${ver_text}${c_light}${p_r}│\e[0m"
-    echo -e "${c_light}│\e[0m${sp_l}${c_gray}${sub_text}${c_light}${sp_r}│\e[0m"
-
-    
-    echo -e "${bottom_box_all_dark}\e[0m"
+    # Отрисовка: Градиент рамки прописан жестко прямо в строках
+    echo -e "\n${c_dark}╭──${c_light}──────────────────────────────────${c_dark}─╮${c_reset}"
+    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_light}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
+    echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
 
 _draw_progress() {
