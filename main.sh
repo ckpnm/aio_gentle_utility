@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="1.07"
+export SCRIPT_VERSION="1.08"
 export GITHUB_URL="https://github.com/ckpnm/aio_gentle_utility"
 export UPDATE_NEEDED=0
 
@@ -15,7 +15,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo -e "\n========================================" >> "$LOG_FILE"
-echo "Запуск AIO VPN GENTLE UTILITY: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+echo "Запуск ΛIO VPN GENTLE UTILITY: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"
 
 # ==========================================
@@ -67,7 +67,7 @@ draw_header() {
     
     local total_width=37
    
-    local title_text="A I O - G E N T L E "
+    local title_text="Λ I Ø - G E N T Ł E "
     local ver_text="v${SCRIPT_VERSION}"
     local title_len=$(( ${#title_text} + ${#ver_text} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
@@ -76,7 +76,7 @@ draw_header() {
     local p_l=$(printf "%${pad_left}s" "")
     local p_r=$(printf "%${pad_right}s" "")
 
-    local sub_text="by gpfme"
+    local sub_text="by •skrım—"
     local sub_len=${#sub_text}
     local sub_pad_left=$(( pad_left + title_len - sub_len ))
     local sub_pad_right=$(( total_width - sub_pad_left - sub_len ))
