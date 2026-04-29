@@ -37,9 +37,9 @@ draw_xui_header() {
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-    echo -e "\n${c_dark}╭──${c_light}──────────────────────────────────${c_dark}─╮${c_reset}"
-    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title}${c_reset}${c_light}${p_r}│${c_reset}"
-    echo -e "${c_light}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
+    echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
+    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
 
@@ -90,16 +90,16 @@ render_xui_menu() {
     done
 }
 
-# Широкий кастомный прогресс-бар для X-UI
+# Широкий кастомный прогресс-бар для X-UI (Кружки)
 _draw_xui_progress() {
     local pid=$1
     local width=37; local p=0; local delay=0.1; local ticks=0
     while kill -0 "$pid" 2>/dev/null; do
         local bar=""
         for ((i=0; i<width; i++)); do
-            if [ $i -lt $p ]; then bar+="█"; else bar+="▒"; fi
+            if [ $i -lt $p ]; then bar+="●"; else bar+="○"; fi
         done
-        printf "\e[u\e[38;5;51m[%s]\e[0m" "$bar"
+        printf "\e[u\e[38;5;51m(%s)\e[0m" "$bar"
         sleep $delay
         ((ticks++))
         if [ $p -lt $((width * 6 / 10)) ]; then
@@ -111,8 +111,8 @@ _draw_xui_progress() {
         fi
     done
     local full_bar=""
-    for ((i=0; i<width; i++)); do full_bar+="█"; done
-    printf "\e[u\e[38;5;51m[%s]\e[0m" "$full_bar"
+    for ((i=0; i<width; i++)); do full_bar+="●"; done
+    printf "\e[u\e[38;5;51m(%s)\e[0m" "$full_bar"
 }
 
 # Запуск задачи с отдельным экраном
@@ -240,16 +240,17 @@ draw_dynamic_success_box() {
     
     local box_width=$((max_len + 4))
     
-    local top_dashes=$(printf "%$((box_width - 3))s" "" | tr ' ' '─')
-    local top_box="${c_dark}╭──${c_light}${top_dashes}${c_dark}─╮${c_reset}"
+    local top_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
+    local top_box="${c_light}╭${top_dashes}╮${c_reset}"
     
     local bot_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
     local bot_box="${c_dark}╰${bot_dashes}╯${c_reset}"
     
     local mid_dashes=$(printf "%${box_width}s" "" | tr ' ' '─')
-    local sep_box="${c_dark}├${mid_dashes}┤${c_reset}"
+    local sep_box="${c_dark}├${mid_dashes}${c_reset}${c_light}┤${c_reset}"
 
-    local pipe="${c_light}│${c_reset}"
+    local pipe_l="${c_dark}│${c_reset}"
+    local pipe_r="${c_light}│${c_reset}"
     
     local title="ПАНЕЛЬ 3X-UI УСПЕШНО УСТАНОВЛЕНА"
     local pad=$((box_width - ${#title} - 2))
@@ -257,31 +258,31 @@ draw_dynamic_success_box() {
     local title_spaces=$(printf "%${pad}s" "")
 
     echo -e "\n${top_box}"
-    echo -e "${pipe}  ${C_OK}${title}${C_ACCENT}${title_spaces}${pipe}"
+    echo -e "${pipe_l}  ${C_ACCENT}${title}${title_spaces}${pipe_r}"
     echo -e "${sep_box}"
     
     local u_pad=$((box_width - ${#lines[0]} - 2))
-    echo -e "${pipe}  ${C_WHITE}Username:${C_BASE}    ${user}$(printf "%${u_pad}s" "")${pipe}"
+    echo -e "${pipe_l}  ${C_WHITE}Username:${C_BASE}    ${user}$(printf "%${u_pad}s" "")${pipe_r}"
     
     local p_pad=$((box_width - ${#lines[1]} - 2))
-    echo -e "${pipe}  ${C_WHITE}Password:${C_BASE}    ${pass}$(printf "%${p_pad}s" "")${pipe}"
+    echo -e "${pipe_l}  ${C_WHITE}Password:${C_BASE}    ${pass}$(printf "%${p_pad}s" "")${pipe_r}"
     
     local po_pad=$((box_width - ${#lines[2]} - 2))
-    echo -e "${pipe}  ${C_WHITE}Port:${C_BASE}        ${port}$(printf "%${po_pad}s" "")${pipe}"
+    echo -e "${pipe_l}  ${C_WHITE}Port:${C_BASE}        ${port}$(printf "%${po_pad}s" "")${pipe_r}"
     
     local pa_pad=$((box_width - ${#lines[3]} - 2))
-    echo -e "${pipe}  ${C_WHITE}WebBasePath:${C_BASE} ${path}$(printf "%${pa_pad}s" "")${pipe}"
+    echo -e "${pipe_l}  ${C_WHITE}WebBasePath:${C_BASE} ${path}$(printf "%${pa_pad}s" "")${pipe_r}"
     
     local ur_pad=$((box_width - ${#lines[4]} - 2))
-    echo -e "${pipe}  ${C_WHITE}Access URL:${C_BASE}  ${C_ACCENT}${url}${C_BASE}$(printf "%${ur_pad}s" "")${pipe}"
+    echo -e "${pipe_l}  ${C_WHITE}Access URL:${C_BASE}  ${C_ACCENT}${url}${C_BASE}$(printf "%${ur_pad}s" "")${pipe_r}"
     
     if [ -n "$cert" ] && [ -n "$key" ]; then
         echo -e "${sep_box}"
         local c_pad=$((box_width - ${#lines[5]} - 2))
-        echo -e "${pipe}  ${C_WHITE}Cert Path:${C_BASE}   ${cert}$(printf "%${c_pad}s" "")${pipe}"
+        echo -e "${pipe_l}  ${C_WHITE}Cert Path:${C_BASE}   ${cert}$(printf "%${c_pad}s" "")${pipe_r}"
         
         local k_pad=$((box_width - ${#lines[6]} - 2))
-        echo -e "${pipe}  ${C_WHITE}Key Path:${C_BASE}    ${key}$(printf "%${k_pad}s" "")${pipe}"
+        echo -e "${pipe_l}  ${C_WHITE}Key Path:${C_BASE}    ${key}$(printf "%${k_pad}s" "")${pipe_r}"
     fi
     
     echo -e "${bot_box}\n"
@@ -304,7 +305,7 @@ _setup_3x_ui() {
         XUI_PORT=$(shuf -i 10000-60000 -n 1)
         clear
         draw_xui_header "ПОРТ ПАНЕЛИ 3X-UI"
-        echo -e "\n  ${C_OK}Сгенерирован случайный порт: ${XUI_PORT}${C_BASE}"
+        echo -e "\n  ${C_ACCENT}Сгенерирован случайный порт: ${XUI_PORT}${C_BASE}"
         sleep 1
     fi
     export XUI_PORT
@@ -400,7 +401,7 @@ _setup_3x_ui() {
         XUI_HOST="$sel_domain"
         clear
         draw_xui_header "SSL ДЛЯ ПАНЕЛИ 3X-UI"
-        echo -e "\n  ${C_OK}Выбран локальный сертификат: ${sel_domain}${C_BASE}"
+        echo -e "\n  ${C_ACCENT}Выбран локальный сертификат: ${sel_domain}${C_BASE}"
         sleep 1
     fi
 
@@ -461,7 +462,7 @@ _manage_3x_ui() {
                local new_user=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
                local new_pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 12 | head -n 1)
                run_xui_task "УПРАВЛЕНИЕ 3X-UI" "Смена учетных данных..." "/usr/local/x-ui/x-ui setting -username $new_user -password $new_pass"
-               echo -e "  ${C_OK}Новые данные для входа:${C_BASE}"
+               echo -e "  ${C_ACCENT}Новые данные для входа:${C_BASE}"
                echo -e "  ${C_WHITE}Username:${C_BASE} $new_user"
                echo -e "  ${C_WHITE}Password:${C_BASE} $new_pass"
                run_xui_task "УПРАВЛЕНИЕ 3X-UI" "Перезапуск службы..." "systemctl restart x-ui"
@@ -469,7 +470,7 @@ _manage_3x_ui() {
             5)
                local new_path=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)
                run_xui_task "УПРАВЛЕНИЕ 3X-UI" "Смена WebBasePath..." "/usr/local/x-ui/x-ui setting -webBasePath $new_path"
-               echo -e "  ${C_OK}Новый WebBasePath:${C_BASE} $new_path"
+               echo -e "  ${C_ACCENT}Новый WebBasePath:${C_BASE} $new_path"
                run_xui_task "УПРАВЛЕНИЕ 3X-UI" "Перезапуск службы..." "systemctl restart x-ui"
                ;;
             6) 
@@ -494,7 +495,7 @@ _uninstall_3x_ui() {
     render_xui_menu "УДАЛЕНИЕ 3X-UI" "${un_opts[@]}"
     if [ "$MENU_CHOICE" -eq 0 ]; then
         run_xui_task "УДАЛЕНИЕ 3X-UI" "Удаление ядра и файлов конфигурации..." "_do_uninstall_3xui"
-        echo -e "  ${C_OK}Удаление успешно завершено.${C_BASE}"
+        echo -e "  ${C_ACCENT}Удаление успешно завершено.${C_BASE}"
     else
         echo -e "\n  ${C_DIM}Отмена.${C_BASE}"
     fi
