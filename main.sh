@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="1.10"
+export SCRIPT_VERSION="1.09"
 export GITHUB_URL="https://github.com/ckpnm/aio_gentle_utility"
-export UPDATE_NEEDED=1
+export UPDATE_NEEDED=0
 
 # Реальный путь к main.sh, даже если он запущен через симлинк
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
