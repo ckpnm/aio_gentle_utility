@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export SCRIPT_VERSION="3.0-modular"
-export GITHUB_URL="https://github.com/твоя-ссылка/aio_gentle"
-export UPDATE_NEEDED=0 # Установи 1, если скрипт устарел (можно автоматизировать проверку)
+export SCRIPT_VERSION="1.0"
+export GITHUB_URL="https://github.com/ckpnm/aio_gentle"
+export UPDATE_NEEDED=0 
 
 
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
@@ -67,9 +67,7 @@ draw_header() {
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
     echo -e "\n\e[36m╭─────────────────────────────────────╮"
-    # Отрисовка названия с версией
     echo -e "\e[36m│${p_l}\e[1;37m${title_text}${ver_color}${ver_text}\e[36m${p_r}│\e[0m"
-    # Отрисовка подписи
     echo -e "\e[36m│${sp_l}\e[90m${sub_text}\e[36m${sp_r}│\e[0m"
     echo -e "\e[36m╰─────────────────────────────────────╯\e[0m"
 }
