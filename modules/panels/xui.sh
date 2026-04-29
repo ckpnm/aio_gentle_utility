@@ -90,7 +90,7 @@ render_xui_menu() {
     done
 }
 
-# Исправленный прогресс-бар: используем \r вместо сохранения курсора (\e[s)
+# Широкий кастомный прогресс-бар: без скобок, скрывает курсор, стирает себя по готовности
 _draw_xui_progress() {
     local pid=$1
     local width=37; local p=0; local delay=0.1; local ticks=0
@@ -99,7 +99,8 @@ _draw_xui_progress() {
         for ((i=0; i<width; i++)); do
             if [ $i -lt $p ]; then bar+="●"; else bar+="○"; fi
         done
-        printf "\r  \e[38;5;51m(%s)\e[0m" "$bar"
+        # \r возвращает каретку, \e[?25l прячет курсор, \e[K зачищает хвост
+        printf "\r\e[?25l  \e[38;5;51m%s\e[0m\e[K" "$bar"
         sleep $delay
         ((ticks++))
         if [ $p -lt $((width * 6 / 10)) ]; then
@@ -110,12 +111,11 @@ _draw_xui_progress() {
             if (( ticks % 15 == 0 )); then ((p++)); fi
         fi
     done
-    local full_bar=""
-    for ((i=0; i<width; i++)); do full_bar+="●"; done
-    printf "\r  \e[38;5;51m(%s)\e[0m\n" "$full_bar"
+    # Как только процесс убит, зачищаем строку с прогресс-баром
+    printf "\r\e[K"
 }
 
-# Исправленный запуск: при ошибке возвращает 1, а не крашит утилиту (exit 1)
+# Запуск задачи с умным перехватом ошибок
 run_xui_task() {
     local menu_title="$1"
     local task_name="$2"
@@ -125,6 +125,7 @@ run_xui_task() {
     draw_xui_header "$menu_title"
     echo -e "\n  ${C_ACCENT}${C_BOLD}${task_name}${C_BASE}"
     
+    cursor_off
     { eval "$cmd_func"; } >> "$LOG_FILE" 2>&1 &
     local task_pid=$!
 
@@ -135,11 +136,18 @@ run_xui_task() {
     local exit_code=$?
     kill $bar_pid 2>/dev/null; wait $bar_pid 2>/dev/null
     
+    # Полностью стираем линию с прогресс-баром
+    printf "\r\e[K"
+    
     if [ $exit_code -ne 0 ]; then
-        echo -e "\n  ${C_ERR}✗ Ошибка (см. логи: $LOG_FILE)${C_BASE}"
+        echo -e "  ${C_ERR}✗ Ошибка выполнения! Вывод лога:${C_BASE}\n"
+        # Выводим последние 12 строк лога
+        tail -n 12 "$LOG_FILE" | while read -r line; do
+            echo -e "    ${C_DIM}$line${C_BASE}"
+        done
+        echo -e "\n  ${C_WHITE}Полный лог: $LOG_FILE${C_BASE}"
         cursor_on; return 1
     fi
-    sleep 0.5
     return 0
 }
 
@@ -211,7 +219,6 @@ _do_config_3xui() {
     sleep 2
     /usr/local/x-ui/x-ui setting -username "$XUI_USER" -password "$XUI_PASS" -port "$XUI_PORT" -webBasePath "/${XUI_PATH}/"
     
-    # Безопасная запись subPort в базу (Go-бинарник не умеет через консоль)
     if command -v sqlite3 >/dev/null 2>&1; then
         sqlite3 /etc/x-ui/x-ui.db "UPDATE settings SET value = '${XUI_SUB_PORT}' WHERE key = 'subPort';"
     fi
@@ -250,8 +257,15 @@ draw_dynamic_success_box() {
     local sep_box="${c_dark}├${h_line}${c_reset}${c_light}┤${c_reset}"
     local pipe_l="${c_dark}│${c_reset}"; local pipe_r="${c_light}│${c_reset}"
     
+    local title="ПАНЕЛЬ 3X-UI УСПЕШНО УСТАНОВЛЕНА"
+    local title_len=32
+    # Точная математика отступа: ширина - длина заголовка - 2 пробела
+    local title_pad=$((box_width - title_len - 2))
+    [ $title_pad -lt 0 ] && title_pad=0
+    local title_spaces=$(printf "%${title_pad}s" "")
+
     echo -e "\n${top_box}"
-    echo -e "${pipe_l}  \e[1;36mПАНЕЛЬ 3X-UI УСПЕШНО УСТАНОВЛЕНА\e[0m$(printf "%$((box_width - 32))s" "")${pipe_r}"
+    echo -e "${pipe_l}  \e[1;36m${title}\e[0m${title_spaces}${pipe_r}"
     echo -e "${sep_box}"
     
     local pad
