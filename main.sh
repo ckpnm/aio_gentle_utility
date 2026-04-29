@@ -53,105 +53,41 @@ check_updates() {
 }
 
 draw_header() {
-    local menu_title="$1"
-    
     # Цветовая палитра
-    local c_light="\e[38;5;51m"   
-    local c_dark="\e[38;5;24m"    
-    local c_white="\e[38;5;255m"  
-    local c_gray="\e[38;5;244m"   
-    local c_red="\e[38;5;196m"    
-    local c_reset="\e[0m"         
+    local c_light="\e[38;5;51m"   # Яркий циан
+    local c_dark="\e[38;5;24m"    # Темный циан
+    local c_white="\e[38;5;255m"  # Белый
+    local c_gray="\e[38;5;244m"   # Серый
+    local c_red="\e[38;5;196m"    # Красный
+    local c_reset="\e[0m"         # Сброс
 
     local ver_color="$c_white"
     [[ "$UPDATE_NEEDED" -eq 1 ]] && ver_color="$c_red"
 
+    
     local total_width=37
-    local title_text="A I O - G E N T L E v"
-    local title_len=$(( ${#title_text} + ${#SCRIPT_VERSION} ))
+   
+    local title_text="Λ I Ø - G E N T Ł E "
+    local ver_text="v${SCRIPT_VERSION}"
+    local title_len=$(( ${#title_text} + ${#ver_text} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
     local pad_right=$(( total_width - title_len - pad_left ))
     
     local p_l=$(printf "%${pad_left}s" "")
     local p_r=$(printf "%${pad_right}s" "")
 
-    # Если в render_menu передан заголовок, ставим его. Иначе "by gpfme"
-    local sub_text="by gpfme"
-    if [[ -n "$menu_title" ]]; then
-        sub_text="$menu_title"
-    fi
-    
+    local sub_text="by •skrım—"
     local sub_len=${#sub_text}
-    
-    # Пытаемся привязать к правому краю
     local sub_pad_left=$(( pad_left + title_len - sub_len ))
-    
-    # Если заголовок длинный, отцентровываем его по всей ширине рамки
-    if (( sub_pad_left < 2 || sub_pad_left + sub_len > total_width - 2 )); then
-        sub_pad_left=$(( (total_width - sub_len) / 2 ))
-    fi
-    
     local sub_pad_right=$(( total_width - sub_pad_left - sub_len ))
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-    echo -e "\n${c_dark}╭──${c_light}──────────────────────────────────${c_dark}─╮${c_reset}"
-    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_light}${p_r}│${c_reset}"
-    echo -e "${c_light}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
+    # Отрисовка: Градиент рамки прописан жестко прямо в строках
+    echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
+    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${ver_text}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
-}
-
-export MENU_CHOICE=""
-render_menu() {
-    local menu_title="$1"
-    shift # Сдвигаем аргументы: теперь заголовок отделился от пунктов меню
-    local options=("$@")
-    local cur=0
-
-    while [[ "${options[$cur]}" == ---* ]]; do ((cur++)); done
-    cursor_off
-    printf "\e[H\e[J"
-
-    while true; do
-        printf "\e[H"
-        draw_header "$menu_title"
-        
-        # Навигация (алиас удален)
-        echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать${C_BASE}\e[K"
-        echo -e " ${C_DIM}GitHub: ${GITHUB_URL}${C_BASE}\e[K"
-        if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
-            echo -e " \e[31m● - Требуется обновление (Актуальный билд: v${REMOTE_VERSION})\e[0m\e[K"
-        fi
-        
-        echo -e "\e[K"
-
-        for i in "${!options[@]}"; do
-            if [[ "${options[$i]}" == ---* ]]; then
-                local clean_title="${options[$i]#--- }"
-                clean_title="${clean_title% ---}"
-                echo -e "  ${C_DIM}::${C_BASE} ${C_ACCENT}${C_BOLD}${clean_title}${C_BASE} ${C_DIM}::${C_BASE}\e[K"
-            elif [ "$i" -eq "$cur" ]; then
-                echo -e "  ${C_ACCENT}● [ ${options[$i]} ]${C_BASE}\e[K"
-            else
-                echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
-            fi
-            
-            if [[ "${options[$i+1]}" == ---* ]]; then
-                echo -e "\e[K"
-            fi
-        done
-        printf "\e[J"
-
-        if ! read -rsn3 key; then
-            cursor_on; exit 1
-        fi
-
-        case "$key" in
-            $'\e[A') while true; do ((cur--)); [ "$cur" -lt 0 ] && cur=$((${#options[@]} - 1)); [[ "${options[$cur]}" != ---* ]] && break; done ;;
-            $'\e[B') while true; do ((cur++)); [ "$cur" -ge "${#options[@]}" ] && cur=0; [[ "${options[$cur]}" != ---* ]] && break; done ;;
-            "") cursor_on; MENU_CHOICE="$cur"; return 0 ;;
-        esac
-    done
 }
 
 _draw_progress() {
@@ -347,7 +283,7 @@ options=(
 check_updates
 
 while true; do
-    render_menu "" "${options[@]}"
+    render_menu "${options[@]}"
     choice=$MENU_CHOICE
     NEEDS_PAUSE=1
     
