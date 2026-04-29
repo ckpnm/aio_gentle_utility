@@ -83,7 +83,7 @@ draw_header() {
     # Отрисовка: Градиент рамки прописан жестко прямо в строках
     echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
     echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_dark}${p_r}│${c_reset}"
-    echo -e "${c_dark}${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_dark}${sp_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_dark}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
 
