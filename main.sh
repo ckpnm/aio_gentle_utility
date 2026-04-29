@@ -2,7 +2,7 @@
 
 export SCRIPT_VERSION="1.05"
 export GITHUB_URL="https://github.com/ckpnm/aio_gentle"
-export UPDATE_NEEDED=0
+export UPDATE_NEEDED=1
 
 # Реальный путь к main.sh, даже если он запущен через симлинк
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
@@ -82,8 +82,8 @@ draw_header() {
 
     # Отрисовка: Градиент рамки прописан жестко прямо в строках
     echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
-    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_dark}${p_r}│${c_reset}"
-    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_dark}${sp_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title_text}${ver_color}${SCRIPT_VERSION}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
 
