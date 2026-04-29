@@ -2,7 +2,7 @@
 
 export SCRIPT_VERSION="3.0-modular"
 
-# Реальный путь к main.sh, даже если он запущен через симлинк
+
 export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" &> /dev/null && pwd)"
 export MODULES_DIR="$SCRIPT_DIR/modules"
 export LOG_FILE="/var/log/aio_setup.log"
@@ -25,10 +25,7 @@ export C_DIM='\e[90m'
 export C_OK='\e[32m'       
 export C_ERR='\e[31m'      
 export C_INV='\e[7m'       
-export C_WHITE='\e[97m'
-export C_BRIGHTWHITE='\e[1;37m'
-export C_BRIGHTCYAN='\e[1;36m'
-export C_DARKCYAN='\e[0;36m'
+export C_WHITE='\e[97m'    
 export C_BOLD='\e[1m'
 
 cursor_off() { printf "\e[?25l"; }
@@ -41,7 +38,8 @@ pause() {
     read -rsn1
 }
 
-draw_header() 
+draw_header() {
+   
     echo -e "\n\e[1;36m╭\e[0;36m─────────────────────────────────────\e[1;36m╮"
     echo -e "\e[0;36m│\e[1;37m         A I O - G E N T L E         \e[0;36m│"
     echo -e "\e[0;36m│\e[1;37m              by gpfme               \e[0;36m│"
@@ -86,11 +84,16 @@ render_menu() {
 
         for i in "${!options[@]}"; do
             if [[ "${options[$i]}" == ---* ]]; then
-                echo -e "\n  ${C_ACCENT}${C_BOLD}${options[$i]}${C_BASE}\e[K"
+                
+                local clean_title="${options[$i]#--- }"
+                clean_title="${clean_title% ---}"
+                echo -e "\n  ${C_DIM}::${C_BASE} ${C_ACCENT}${C_BOLD}${clean_title}${C_BASE} ${C_DIM}::${C_BASE}\e[K"
             elif [ "$i" -eq "$cur" ]; then
-                echo -e "${C_ACCENT}  > ${C_INV} ${options[$i]} ${C_BASE}\e[K"
+               
+                echo -e "  ${C_ACCENT}● [ ${options[$i]} ]${C_BASE}\e[K"
             else
-                echo -e "      ${options[$i]}\e[K"
+                
+                echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
             fi
         done
         printf "\e[J"
@@ -188,6 +191,8 @@ options=(
     "Очистка и ротация логов"
     "--- УПРАВЛЕНИЕ СКРИПТОМ ---"
     "Обойти белые списки"
+    "Обновить скрипт"
+    "Удалить скрипт"
     "Выход"
 )
 
@@ -223,6 +228,8 @@ while true; do
         "IP Region Check") step_ipregion ;;
         "Очистка и ротация логов") step_logs ;;
         "Обойти белые списки") step_bypass_whitelist ;;
+        "Обновить скрипт") step_update_script || NEEDS_PAUSE=0 ;;
+        "Удалить скрипт") step_uninstall_script || NEEDS_PAUSE=0 ;;
         "Выход") cursor_on; exit 0 ;;
     esac
     
