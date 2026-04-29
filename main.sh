@@ -39,16 +39,10 @@ pause() {
 }
 
 draw_header() {
-    local title="$1"
-    local width=54
-    local title_len=${#title}
-    local pad_right=$(( width - 2 - title_len ))
-    [[ $pad_right -lt 0 ]] && pad_right=0
-    local pad_spaces=$(printf "%${pad_right}s" "")
-    
-    echo -e "${C_ACCENT}┌──────────────────────────────────────────────────────┐${C_BASE}\e[K"
-    echo -e "${C_ACCENT}│  ${title}${pad_spaces}│${C_BASE}\e[K"
-    echo -e "${C_ACCENT}└──────────────────────────────────────────────────────┘${C_BASE}\e[K"
+    echo -e "\n\e[1;35m╭─────────────────────────────────────╮"
+    echo -e "│\e[1;36m         A I O - G E N T L E         \e[1;35m│"
+    echo -e "│\e[2;37m                    by gpfme         \e[1;35m│"
+    echo -e "\e[1;35m╰─────────────────────────────────────╯\e[0m"
 }
 
 _draw_progress() {
@@ -75,8 +69,6 @@ _draw_progress() {
 
 export MENU_CHOICE=""
 render_menu() {
-    local title="$1"
-    shift
     local options=("$@")
     local cur=0
 
@@ -86,8 +78,8 @@ render_menu() {
 
     while true; do
         printf "\e[H"
-        draw_header "$title"
-        echo -e "${C_WHITE} [↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K\n\e[K"
+        draw_header
+        echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K\n\e[K"
 
         for i in "${!options[@]}"; do
             if [[ "${options[$i]}" == ---* ]]; then
@@ -196,8 +188,13 @@ options=(
     "Выход"
 )
 
+# Приветственная заставка при старте
+clear
+draw_header
+sleep 1
+
 while true; do
-    render_menu "AIO VPN GENTLE UTILITY v${SCRIPT_VERSION}" "${options[@]}"
+    render_menu "${options[@]}"
     choice=$MENU_CHOICE
     NEEDS_PAUSE=1
     
