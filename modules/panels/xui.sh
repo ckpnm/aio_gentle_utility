@@ -90,7 +90,6 @@ render_xui_menu() {
     done
 }
 
-# Широкий кастомный прогресс-бар: без скобок, скрывает курсор, стирает себя по готовности
 _draw_xui_progress() {
     local pid=$1
     local width=37; local p=0; local delay=0.1; local ticks=0
@@ -99,7 +98,6 @@ _draw_xui_progress() {
         for ((i=0; i<width; i++)); do
             if [ $i -lt $p ]; then bar+="●"; else bar+="○"; fi
         done
-        # \r возвращает каретку, \e[?25l прячет курсор, \e[K зачищает хвост
         printf "\r\e[?25l  \e[38;5;51m%s\e[0m\e[K" "$bar"
         sleep $delay
         ((ticks++))
@@ -111,11 +109,9 @@ _draw_xui_progress() {
             if (( ticks % 15 == 0 )); then ((p++)); fi
         fi
     done
-    # Как только процесс убит, зачищаем строку с прогресс-баром
     printf "\r\e[K"
 }
 
-# Запуск задачи с умным перехватом ошибок
 run_xui_task() {
     local menu_title="$1"
     local task_name="$2"
@@ -136,12 +132,10 @@ run_xui_task() {
     local exit_code=$?
     kill $bar_pid 2>/dev/null; wait $bar_pid 2>/dev/null
     
-    # Полностью стираем линию с прогресс-баром
     printf "\r\e[K"
     
     if [ $exit_code -ne 0 ]; then
         echo -e "  ${C_ERR}✗ Ошибка выполнения! Вывод лога:${C_BASE}\n"
-        # Выводим последние 12 строк лога
         tail -n 12 "$LOG_FILE" | while read -r line; do
             echo -e "    ${C_DIM}$line${C_BASE}"
         done
@@ -168,7 +162,12 @@ _do_certbot_xui() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq && apt-get install -y -qq certbot
     systemctl stop nginx apache2 x-ui 2>/dev/null || true
-    certbot certonly --standalone --agree-tos -m "admin@$XUI_DOMAIN" -d "$XUI_DOMAIN" --non-interactive
+    
+    # Используем введенный пользователем email (или дефолтный, если он пропустил)
+    local use_email="$CERT_EMAIL"
+    if [ -z "$use_email" ]; then use_email="admin@$XUI_DOMAIN"; fi
+    
+    certbot certonly --standalone --agree-tos -m "$use_email" -d "$XUI_DOMAIN" --non-interactive
 }
 
 _do_acme_ip_xui() {
@@ -259,7 +258,6 @@ draw_dynamic_success_box() {
     
     local title="ПАНЕЛЬ 3X-UI УСПЕШНО УСТАНОВЛЕНА"
     local title_len=32
-    # Точная математика отступа: ширина - длина заголовка - 2 пробела
     local title_pad=$((box_width - title_len - 2))
     [ $title_pad -lt 0 ] && title_pad=0
     local title_spaces=$(printf "%${title_pad}s" "")
@@ -313,14 +311,23 @@ _setup_3x_ui() {
 
     local ssl_opts=("Выпустить SSL для домена (certbot)" "Выпустить SSL для IP (acme.sh + ZeroSSL)")
     local saved_domains=()
+    
     if [ -f /etc/aio_certs.db ]; then
         while IFS='|' read -r DOMAIN ISSUE_TIME; do
             if [ -n "$DOMAIN" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-                ssl_opts+=("Локальный SSL: $DOMAIN")
-                saved_domains+=("$DOMAIN")
+                local is_dup=0
+                for existing in "${saved_domains[@]}"; do
+                    if [[ "$existing" == "$DOMAIN" ]]; then is_dup=1; break; fi
+                done
+                
+                if [[ $is_dup -eq 0 ]]; then
+                    ssl_opts+=("Локальный SSL: $DOMAIN")
+                    saved_domains+=("$DOMAIN")
+                fi
             fi
         done < /etc/aio_certs.db
     fi
+    
     ssl_opts+=("Указать пути к файлам вручную" "Без SSL (Небезопасно)")
 
     while true; do render_xui_menu "SSL ДЛЯ ПАНЕЛИ 3X-UI" "${ssl_opts[@]}"; local ssl_choice=$MENU_CHOICE; break; done
@@ -330,7 +337,9 @@ _setup_3x_ui() {
 
     if [ "$ssl_choice" -eq 0 ]; then
         clear; draw_xui_header "SSL ДЛЯ ПАНЕЛИ 3X-UI"; echo -e "\n"; cursor_on
-        read -p "$(echo -e "  \e[1;36m> Введи домен: \e[0m")" XUI_DOMAIN; export XUI_DOMAIN; cursor_off
+        read -p "$(echo -e "  \e[1;36m> Введи домен: \e[0m")" XUI_DOMAIN; export XUI_DOMAIN
+        read -p "$(echo -e "  \e[1;36m> Введи email: \e[0m")" CERT_EMAIL; export CERT_EMAIL
+        cursor_off
         run_xui_task "SSL ДЛЯ ПАНЕЛИ 3X-UI" "Выпуск сертификата (certbot)..." "_do_certbot_xui" || return
         CERT_PUB="/etc/letsencrypt/live/${XUI_DOMAIN}/fullchain.pem"
         CERT_KEY="/etc/letsencrypt/live/${XUI_DOMAIN}/privkey.pem"
