@@ -26,7 +26,7 @@ draw_xui_header() {
     local p_l=$(printf "%${pad_left}s" "")
     local p_r=$(printf "%${pad_right}s" "")
 
-    local sub_text="by gpfme"
+    local sub_text="by MHSanaei"
     local sub_len=${#sub_text}
     
     # Ровняем подпись по правому краю заголовка, если влезает, иначе по центру
@@ -39,9 +39,9 @@ draw_xui_header() {
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-    echo -e "\n${c_dark}╭──${c_light}──────────────────────────────────${c_dark}─╮${c_reset}"
-    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title}${c_reset}${c_light}${p_r}│${c_reset}"
-    echo -e "${c_light}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
+    echo -e "\n${c_light}╭─────────────────────────────────────╮${c_reset}"
+    echo -e "${c_dark}│${c_reset}${p_l}${c_white}\e[1m${title}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_dark}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
     echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
 }
 
@@ -427,7 +427,7 @@ _uninstall_3x_ui() {
 step_3x_ui() {
     local opts=("Установить 3x-ui" "Управление 3x-ui" "Удалить 3x-ui" "Назад")
     while true; do
-        render_xui_menu "ПАНЕЛЬ 3X-UI" "${opts[@]}"
+        render_xui_menu "3X-UI" "${opts[@]}"
         local local_choice=$MENU_CHOICE
         case $local_choice in
             0) clear; _setup_3x_ui; pause ;;
