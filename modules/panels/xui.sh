@@ -2,6 +2,96 @@
 # МОДУЛЬ: 3X-UI
 # ==============================================================================
 
+# Локальная отрисовка шапки для x-ui
+draw_xui_header() {
+    local title="$1"
+    
+    local c_light="\e[38;5;51m"
+    local c_dark="\e[38;5;24m"
+    local c_white="\e[38;5;255m"
+    local c_gray="\e[38;5;244m"
+    local c_reset="\e[0m"
+
+    local total_width=37
+    local title_len=${#title}
+    
+    # Защита от слишком длинного заголовка
+    if (( title_len > total_width - 4 )); then
+        title="${title:0:31}.."
+        title_len=${#title}
+    fi
+
+    local pad_left=$(( (total_width - title_len) / 2 ))
+    local pad_right=$(( total_width - title_len - pad_left ))
+    local p_l=$(printf "%${pad_left}s" "")
+    local p_r=$(printf "%${pad_right}s" "")
+
+    local sub_text="by gpfme"
+    local sub_len=${#sub_text}
+    
+    # Ровняем подпись по правому краю заголовка, если влезает, иначе по центру
+    local sub_pad_left=$(( pad_left + title_len - sub_len ))
+    if (( sub_pad_left < 2 || sub_pad_left + sub_len > total_width - 2 )); then
+        sub_pad_left=$(( (total_width - sub_len) / 2 ))
+    fi
+    local sub_pad_right=$(( total_width - sub_pad_left - sub_len ))
+    
+    local sp_l=$(printf "%${sub_pad_left}s" "")
+    local sp_r=$(printf "%${sub_pad_right}s" "")
+
+    echo -e "\n${c_dark}╭──${c_light}──────────────────────────────────${c_dark}─╮${c_reset}"
+    echo -e "${c_light}│${c_reset}${p_l}${c_white}\e[1m${title}${c_reset}${c_light}${p_r}│${c_reset}"
+    echo -e "${c_light}│${c_reset}${sp_l}${c_gray}${sub_text}${c_reset}${c_light}${sp_r}│${c_reset}"
+    echo -e "${c_dark}╰─────────────────────────────────────╯${c_reset}"
+}
+
+# Локальная отрисовка меню для x-ui
+render_xui_menu() {
+    local menu_title="$1"
+    shift 
+    local options=("$@")
+    local cur=0
+
+    while [[ "${options[$cur]}" == ---* ]]; do ((cur++)); done
+    cursor_off
+    printf "\e[H\e[J"
+
+    while true; do
+        printf "\e[H"
+        draw_xui_header "$menu_title"
+        
+        echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать${C_BASE}\e[K"
+        echo -e " ${C_DIM}GitHub: ${GITHUB_URL}${C_BASE}\e[K\n\e[K"
+
+        for i in "${!options[@]}"; do
+            if [[ "${options[$i]}" == ---* ]]; then
+                local clean_title="${options[$i]#--- }"
+                clean_title="${clean_title% ---}"
+                echo -e "  ${C_DIM}::${C_BASE} ${C_ACCENT}${C_BOLD}${clean_title}${C_BASE} ${C_DIM}::${C_BASE}\e[K"
+            elif [ "$i" -eq "$cur" ]; then
+                echo -e "  ${C_ACCENT}● [ ${options[$i]} ]${C_BASE}\e[K"
+            else
+                echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
+            fi
+            
+            if [[ "${options[$i+1]}" == ---* ]]; then
+                echo -e "\e[K"
+            fi
+        done
+        printf "\e[J"
+
+        if ! read -rsn3 key; then
+            cursor_on; exit 1
+        fi
+
+        case "$key" in
+            $'\e[A') while true; do ((cur--)); [ "$cur" -lt 0 ] && cur=$((${#options[@]} - 1)); [[ "${options[$cur]}" != ---* ]] && break; done ;;
+            $'\e[B') while true; do ((cur++)); [ "$cur" -ge "${#options[@]}" ] && cur=0; [[ "${options[$cur]}" != ---* ]] && break; done ;;
+            "") cursor_on; MENU_CHOICE="$cur"; return 0 ;;
+        esac
+    done
+}
+
 _do_certbot_xui() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq && apt-get install -y -qq certbot
@@ -21,7 +111,6 @@ _do_acme_ip_xui() {
         local SERVER_IPV6=$(curl -s6 ifconfig.me)
         [ -n "$SERVER_IPV6" ] && d_args+=" -d ${SERVER_IPV6}"
     fi
-    
     
     ~/.acme.sh/acme.sh --register-account -m "$ZERO_SSL_EMAIL" --server zerossl >/dev/null 2>&1
     ~/.acme.sh/acme.sh --set-default-ca --server zerossl
@@ -166,7 +255,7 @@ _setup_3x_ui() {
     ssl_opts+=("Без SSL (Небезопасно)")
 
     while true; do
-        render_menu "SSL ДЛЯ ПАНЕЛИ 3X-UI" "${ssl_opts[@]}"
+        render_xui_menu "SSL ДЛЯ ПАНЕЛИ 3X-UI" "${ssl_opts[@]}"
         local ssl_choice=$MENU_CHOICE
         break
     done
@@ -202,7 +291,7 @@ _setup_3x_ui() {
 
         if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" -eq 0 ]; then
             local v6_opts=("Включить IPv6 в сертификат" "Не включать IPv6" "Отключить IPv6 на сервере")
-            render_menu "НАЙДЕН IPv6" "${v6_opts[@]}"
+            render_xui_menu "НАЙДЕН IPv6" "${v6_opts[@]}"
             local v6_choice=$MENU_CHOICE
             if [ $v6_choice -eq 0 ]; then INCLUDE_V6=1; fi
             if [ $v6_choice -eq 2 ]; then 
@@ -278,7 +367,7 @@ _manage_3x_ui() {
     )
     
     while true; do
-        render_menu "УПРАВЛЕНИЕ 3X-UI" "${opts[@]}"
+        render_xui_menu "УПРАВЛЕНИЕ 3X-UI" "${opts[@]}"
         local choice=$MENU_CHOICE
         
         if [ "$choice" -eq 7 ]; then return 0; fi
@@ -338,7 +427,7 @@ _uninstall_3x_ui() {
 step_3x_ui() {
     local opts=("Установить 3x-ui" "Управление 3x-ui" "Удалить 3x-ui" "Назад")
     while true; do
-        render_menu "ПАНЕЛЬ 3X-UI" "${opts[@]}"
+        render_xui_menu "ПАНЕЛЬ 3X-UI" "${opts[@]}"
         local local_choice=$MENU_CHOICE
         case $local_choice in
             0) clear; _setup_3x_ui; pause ;;
