@@ -53,30 +53,29 @@ check_updates() {
 
 draw_header() {
     local total_width=37
-    
-    # Цвета: 
-    local c_light_cyan="\e[38;5;51m" # Яркий неоновый циан для уголков
-    local c_dark_cyan="\e[38;5;24m"  # Глубокий темный циан для линий
-    local c_white="\e[38;5;255m"     # Чистый белый
-    local c_gray="\e[38;5;244m"      # Серый
-    local c_red="\e[38;5;196m"       # Красный
 
-    # Цвет версии
+    # ANSI256 
+    local c_light="\e[38;5;51m"   # Яркий неоновый циан (для ярких элементов)
+    local c_dark="\e[38;5;24m"    # Глубокий темный циан (для темных элементов)
+    local c_white="\e[38;5;255m"  # Чистый белый (для основного текста)
+    local c_gray="\e[38;5;244m"   # Серый (для подписи "by gpfme")
+    local c_red="\e[38;5;196m"    # Красный (для устаревшей версии)
+
+    
     local ver_color="$c_white"
     if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
         ver_color="$c_red"
     fi
 
-    # Сборка строки заголовка
-    local title_text="A I O - G E N T L E "
-    local ver_text="v${SCRIPT_VERSION}"
+   
+    local title_text="A I O - G E N T L E v"
+    local ver_text="${SCRIPT_VERSION}"
     local title_len=$(( ${#title_text} + ${#ver_text} ))
     local pad_left=$(( (total_width - title_len) / 2 ))
     local pad_right=$(( total_width - title_len - pad_left ))
     local p_l=$(printf "%${pad_left}s" "")
     local p_r=$(printf "%${pad_right}s" "")
 
-    # Сборка строки подписи
     local sub_text="by gpfme"
     local sub_len=${#sub_text}
     local sub_pad_left=$(( pad_left + title_len - sub_len ))
@@ -84,10 +83,30 @@ draw_header() {
     local sp_l=$(printf "%${sub_pad_left}s" "")
     local sp_r=$(printf "%${sub_pad_right}s" "")
 
-    echo -e "\n${c_light_cyan}╭${c_dark_cyan}─────────────────────────────────────${c_light_cyan}╮\e[0m"
-    echo -e "${c_dark_cyan}│${p_l}${c_white}${C_BOLD}${title_text}${ver_color}${ver_text}${c_dark_cyan}${p_r}│\e[0m"
-    echo -e "${c_dark_cyan}│${sp_l}${c_gray}${sub_text}${c_dark_cyan}${sp_r}│\e[0m"
-    echo -e "${c_light_cyan}╰${c_dark_cyan}─────────────────────────────────────${c_light_cyan}╯\e[0m"
+   
+    local top_box_start_dark="${c_dark}╭──${c_light}"
+    local top_box_end_dark="${c_dark}─╮${c_light}"
+    local top_box_dashes_bright=$(printf "%34s" "" | tr ' ' '─')
+
+    local mid_box_pipes_bright="${c_light}│${c_white}"
+
+   
+    local bottom_box_all_dark="${c_dark}╰"
+    bottom_box_all_dark+=$(printf "%${total_width}s" "" | tr ' ' '─')
+    bottom_box_all_dark+="╯${c_light}"
+
+
+    
+    echo -e ""
+    
+    echo -e "${top_box_start_dark}${top_box_dashes_bright}${top_box_end_dark}\e[0m"
+
+    
+    echo -e "${c_light}│\e[0m${p_l}${c_white}${C_BOLD}${title_text}${ver_color}${ver_text}${c_light}${p_r}│\e[0m"
+    echo -e "${c_light}│\e[0m${sp_l}${c_gray}${sub_text}${c_light}${sp_r}│\e[0m"
+
+    
+    echo -e "${bottom_box_all_dark}\e[0m"
 }
 
 _draw_progress() {
@@ -125,14 +144,14 @@ render_menu() {
         printf "\e[H"
         draw_header
         
-        # Блок навигации и ссылок
+        
         echo -e " ${C_WHITE}[↑↓] Навигация | [Enter] Выбрать | Алиас: ${C_ACCENT}aio_gentle${C_BASE}\e[K"
         echo -e " ${C_DIM}GitHub: ${GITHUB_URL}${C_BASE}\e[K"
         if [[ "$UPDATE_NEEDED" -eq 1 ]]; then
             echo -e " \e[31m● - Требуется обновление (Доступна: v${REMOTE_VERSION})\e[0m\e[K"
         fi
         
-        # Одинарный отступ перед началом меню
+        
         echo -e "\e[K"
 
         for i in "${!options[@]}"; do
@@ -146,7 +165,7 @@ render_menu() {
                 echo -e "      ${C_WHITE}${options[$i]}${C_BASE}\e[K"
             fi
             
-            # Добавляем пустую строку после каждой категории для визуального разделения
+            
             if [[ "${options[$i+1]}" == ---* ]]; then
                 echo -e "\e[K"
             fi
