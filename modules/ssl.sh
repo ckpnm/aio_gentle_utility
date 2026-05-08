@@ -5,15 +5,34 @@
 _do_certbot_install() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot dnsutils
+    # Устанавливаем socat, он нужен для standalone режима резервного acme.sh
+    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot dnsutils socat
 }
 
 _do_certbot_run() {
-    # Пытаемся получить сертификат от Let's Encrypt
+    # Сначала пробуем Let's Encrypt
     if ! certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive; then
-        echo "Let's Encrypt недоступен. Пробуем альтернативный CA (Buypass)..."
-        # Если Let's Encrypt лежит (ошибка 500/maintenance), используем Buypass (работает точно так же)
-        certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive --server 'https://api.buypass.com/acme/directory'
+        echo "Let's Encrypt временно недоступен. Запускаем резервный выпуск через ZeroSSL..."
+        
+        # Устанавливаем acme.sh
+        curl -s https://get.acme.sh | sh >/dev/null 2>&1
+        export PATH="$HOME/.acme.sh:$PATH"
+        
+        # Подготавливаем директории
+        mkdir -p "/etc/letsencrypt/live/$LE_DOMAIN"
+        
+        # Регистрируемся и выпускаем сертификат
+        acme.sh --register-account -m "$LE_EMAIL" --server zerossl >/dev/null 2>&1
+        acme.sh --set-default-ca --server zerossl >/dev/null 2>&1
+        
+        if acme.sh --issue -d "$LE_DOMAIN" --standalone --server zerossl --force; then
+            # Раскидываем ключи в стандартные папки certbot, чтобы другие модули их нашли
+            acme.sh --installcert -d "$LE_DOMAIN" \
+                --key-file "/etc/letsencrypt/live/$LE_DOMAIN/privkey.pem" \
+                --fullchain-file "/etc/letsencrypt/live/$LE_DOMAIN/fullchain.pem" >/dev/null 2>&1
+        else
+            exit 1
+        fi
     fi
 }
 
@@ -26,10 +45,11 @@ _install_cert() {
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Домен (например, domain.com): ${C_BASE}")" LE_DOMAIN
     if [ -z "$LE_DOMAIN" ]; then cursor_off; return 1; fi
     cursor_off
+    export LE_DOMAIN
     
     echo -e "\n  ${C_DIM}Проверка привязки домена к IP...${C_BASE}"
     
-    # Получаем IP явно и выводим пользователю
+    # Получаем IP-адреса для вывода
     local SERVER_IP=$(curl -s4 ifconfig.me 2>/dev/null)
     local DOMAIN_IP=$(nslookup "$LE_DOMAIN" 2>/dev/null | awk '/^Address: / { print $2 }' | grep -v ':' | tail -n1)
 
@@ -38,22 +58,23 @@ _install_cert() {
         return 1
     fi
 
-    echo -e "  ${C_WHITE}IP сервера:${C_BASE} $SERVER_IP"
-    echo -e "  ${C_WHITE}IP домена:${C_BASE}  $DOMAIN_IP"
+    # Розовый цвет для IP, как на скриншоте
+    local c_pink="\e[38;5;204m"
+    echo -e "  ${C_WHITE}IP сервера: ${c_pink}${SERVER_IP}${C_BASE}"
+    echo -e "  ${C_WHITE}IP домена:  ${c_pink}${DOMAIN_IP}${C_BASE}"
 
     if [ "$SERVER_IP" != "$DOMAIN_IP" ]; then
-        echo -e "  ${C_ERR}Внимание: IP не совпадают! Выпуск сертификата скорее всего завершится ошибкой.${C_BASE}"
+        echo -e "  ${C_ERR}Внимание: IP не совпадают!${C_BASE}"
         cursor_on
-        read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Всё равно продолжить установку? (y/n): ${C_BASE}")" force_cont
+        read -p "$(echo -e "\n  ${C_ACCENT}${C_BOLD}> Всё равно продолжить установку? (y/n): ${C_BASE}")" force_cont
         cursor_off
         if [[ ! "$force_cont" =~ ^[YyДд] ]]; then 
-            echo -e "\n  ${C_DIM}Отмена. Возврат в меню.${C_BASE}"
+            echo -e "  ${C_DIM}Отмена. Возврат в меню.${C_BASE}"
             return 1
         fi
     else
         echo -e "  ${C_OK}IP совпадают. Продолжаем...${C_BASE}"
     fi
-    export LE_DOMAIN
     
     echo ""
     cursor_on
@@ -64,15 +85,15 @@ _install_cert() {
     
     echo ""
     wait_for_apt
-    run_module_task "УСТАНОВКА SSL" "Установка certbot..." "_do_certbot_install"
+    run_module_task "УСТАНОВКА SSL" "Установка пакетов..." "_do_certbot_install"
     
-    # Останавливаем веб-серверы, чтобы порт 80 был свободен для certbot standalone
+    # Тормозим веб-сервисы, чтобы порт 80 был железно свободен
     systemctl stop nginx apache2 x-ui 2>/dev/null || true
     
     run_module_task "УСТАНОВКА SSL" "Выпуск сертификата ($LE_DOMAIN)..." "_do_certbot_run"
     
-    if [ -d "/etc/letsencrypt/live/$LE_DOMAIN" ]; then
-        # Проверяем, чтобы не записать дубль в базу
+    # Проверяем, появились ли файлы (от certbot или от резервного acme.sh)
+    if [ -f "/etc/letsencrypt/live/$LE_DOMAIN/fullchain.pem" ]; then
         if ! grep -q "^${LE_DOMAIN}|" /etc/aio_certs.db 2>/dev/null; then
             echo "$LE_DOMAIN|$(date +%s)" >> /etc/aio_certs.db
         fi
@@ -83,13 +104,18 @@ _install_cert() {
         echo -e "\n  ${C_ERR}Не удалось получить сертификат. Проверь логи: $LOG_FILE${C_BASE}"
     fi
     
-    # Запускаем службы обратно
     systemctl start nginx apache2 x-ui 2>/dev/null || true
 }
 
 _do_cert_renew() {
     systemctl stop nginx apache2 x-ui 2>/dev/null || true
     certbot renew --quiet
+    
+    # Если сертификаты были выпущены через acme.sh, обновляем их тоже
+    if command -v ~/.acme.sh/acme.sh >/dev/null 2>&1; then
+        ~/.acme.sh/acme.sh --cron --home ~/.acme.sh >/dev/null 2>&1
+    fi
+    
     systemctl start nginx apache2 x-ui 2>/dev/null || true
 }
 
@@ -128,7 +154,6 @@ step_letsencrypt() {
             "Назад"
         )
         
-        # Динамически подгружаем список доменов как некликабельные заголовки
         if [ -f /etc/aio_certs.db ] && [ -s /etc/aio_certs.db ]; then
             opts+=("--- -------------------- ---")
             opts+=("--- ВЫДАННЫЕ СЕРТИФИКАТЫ ---")
@@ -149,7 +174,7 @@ step_letsencrypt() {
         case "$MENU_CHOICE" in
             0) _install_cert; echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 ;;
             1) _renew_cert; echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 ;;
-            2) return 1 ;; # Выход без паузы
+            2) return 1 ;; # Выход без паузы, напрямую в меню
         esac
     done
 }
