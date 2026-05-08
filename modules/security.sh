@@ -26,7 +26,8 @@ _do_tg_install() {
 
 _setup_firewalls() {
     clear
-    draw_header "АНАЛИЗ СЕТИ"
+    draw_header
+    echo -e "\n  ${C_INV} [ АНАЛИЗ СЕТИ ] ${C_BASE}\n"
     
     # Собираем все прослушиваемые порты
     local active_ports=()
@@ -44,7 +45,7 @@ _setup_firewalls() {
     local default_ssh=$(ss -tlnp 2>/dev/null | grep -w sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
     default_ssh=${default_ssh:-22}
 
-    echo -e "\n  ${C_DIM}Сейчас сервер слушает следующие порты:${C_BASE}"
+    echo -e "  ${C_DIM}Сейчас сервер слушает следующие порты:${C_BASE}"
     if [ ${#sorted_active[@]} -eq 0 ]; then
         echo -e "  ${C_WHITE}Открытых портов не обнаружено.${C_BASE}\n"
     else
@@ -56,7 +57,7 @@ _setup_firewalls() {
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Какие порты оставить открытыми? (SSH ${default_ssh}/tcp защищен): ${C_BASE}")" user_ports
     cursor_off
     
-    # Железно добавляем SSH, чтобы юзер не отрезал себя от сервера
+    # Железно добавляем SSH, чтобы не отрезать себя
     user_ports="${default_ssh}/tcp $user_ports"
     
     export FINAL_ALLOW_PORTS=()
@@ -117,32 +118,33 @@ step_security() {
     )
     
     while true; do
-        render_menu "УПРАВЛЕНИЕ ЗАЩИТОЙ" "${opts[@]}"
-        local selected="${opts[$MENU_CHOICE]}"
+        # Вызов строго под версию 1.09
+        render_menu "${opts[@]}"
         
-        case "$selected" in
-            "Установить UFW и Traffic-Guard") 
+        # Индексы совпадают с пунктами, так как '---' это 0 и он пропускается
+        case "$MENU_CHOICE" in
+            1) 
                 _setup_firewalls
                 echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
                 ;;
-            "Остановить Traffic-Guard (Пауза)") 
+            2) 
                 clear
-                draw_header "TRAFFIC-GUARD"
-                echo ""
+                draw_header
+                echo -e "\n  ${C_INV} [ TRAFFIC-GUARD ] ${C_BASE}\n"
                 run_task "Остановка сервиса Traffic-Guard" "systemctl stop traffic-guard 2>/dev/null || true"
                 echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
                 ;;
-            "Запустить Traffic-Guard") 
+            3) 
                 clear
-                draw_header "TRAFFIC-GUARD"
-                echo ""
+                draw_header
+                echo -e "\n  ${C_INV} [ TRAFFIC-GUARD ] ${C_BASE}\n"
                 run_task "Запуск сервиса Traffic-Guard" "systemctl start traffic-guard 2>/dev/null || true"
                 echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
                 ;;
-            "Открыть порт (UFW)")
+            4)
                 clear
-                draw_header "UFW: ОТКРЫТИЕ ПОРТА"
-                echo ""
+                draw_header
+                echo -e "\n  ${C_INV} [ UFW ] ОТКРЫТИЕ ПОРТА ${C_BASE}\n"
                 cursor_on
                 read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
                 cursor_off
@@ -150,10 +152,10 @@ step_security() {
                 if [ -n "$ufw_port" ]; then run_task "Открытие порта $ufw_port" "ufw allow $ufw_port >/dev/null 2>&1"; fi
                 echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
                 ;;
-            "Закрыть порт (UFW)")
+            5)
                 clear
-                draw_header "UFW: ЗАКРЫТИЕ ПОРТА"
-                echo ""
+                draw_header
+                echo -e "\n  ${C_INV} [ UFW ] ЗАКРЫТИЕ ПОРТА ${C_BASE}\n"
                 cursor_on
                 read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
                 cursor_off
@@ -161,7 +163,7 @@ step_security() {
                 if [ -n "$ufw_port" ]; then run_task "Закрытие порта $ufw_port" "ufw delete allow $ufw_port >/dev/null 2>&1"; fi
                 echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
                 ;;
-            "Назад") 
+            6) 
                 return 0 
                 ;;
         esac
@@ -273,7 +275,7 @@ TIMER
     systemctl enable --now blocklist-update.timer
     systemctl start blocklist-update.service
     
-    # Подчищаем хвосты от предыдущих установок iptables/ipset (если были)
+    # Подчищаем хвосты от предыдущих установок iptables/ipset
     systemctl stop ipset-persistent 2>/dev/null || true
     systemctl disable ipset-persistent 2>/dev/null || true
     apt-get purge -y -qq iptables-persistent ipset 2>/dev/null || true
@@ -282,8 +284,8 @@ TIMER
 
 step_bot_protection() {
     clear
-    draw_header "AUTO_NFTABLES & BOT BAN"
-    echo ""
+    draw_header
+    echo -e "\n  ${C_INV} [ AUTO_NFTABLES & BOT BAN ] ${C_BASE}\n"
     
     if check_installed "[ -f /usr/local/sbin/update-blocklist-nft.py ]"; then 
         echo -e "\n${C_OK}Нажми любую клавишу для возврата...${C_BASE}"; read -rsn1 
