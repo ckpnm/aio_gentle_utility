@@ -6,12 +6,10 @@ _do_ufw_setup() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ufw
     
-    # Сброс правил UFW перед чистой настройкой
     ufw --force reset >/dev/null 2>&1
     ufw default deny incoming >/dev/null 2>&1
     ufw default allow outgoing >/dev/null 2>&1
     
-    # Применяем порты, которые одобрил пользователь
     for port in "${FINAL_ALLOW_PORTS[@]}"; do
         ufw allow "$port" >/dev/null 2>&1
     done
@@ -26,9 +24,8 @@ _do_tg_install() {
 
 _setup_firewalls() {
     draw_header
-    echo -e "\n${C_ACCENT}[ АНАЛИЗ СЕТИ ]${C_BASE}\n"
+    echo -e "\n  ${C_INV} [ АНАЛИЗ СЕТИ ] ${C_BASE}\n"
     
-    # Собираем все прослушиваемые порты
     local active_ports=()
     while read -r line; do
         local proto=$(echo "$line" | awk '{print $1}')
@@ -38,28 +35,27 @@ _setup_firewalls() {
         fi
     done < <(ss -tulnp | awk 'NR>1' | grep -vE '127\.0\.0\.1|::1' | grep -v 'tcp-ext')
     
-    # Сортируем и убираем дубликаты
     IFS=$'\n' local sorted_active=($(sort -u <<<"${active_ports[*]}")); unset IFS
     
-    local default_ssh=$(ss -tlnp 2>/dev/null | grep sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
+    # Определяем SSH порт
+    local default_ssh=$(ss -tlnp 2>/dev/null | grep -w sshd | awk '{print $4}' | awk -F':' '{print $NF}' | head -n 1)
     default_ssh=${default_ssh:-22}
 
     echo -e "  ${C_DIM}Сейчас сервер слушает следующие порты:${C_BASE}"
     if [ ${#sorted_active[@]} -eq 0 ]; then
-        echo -e "  ${C_WHITE}Открытых портов не обнаружено.${C_BASE}"
+        echo -e "  ${C_WHITE}Открытых портов не обнаружено.${C_BASE}\n"
     else
-        echo -e "  ${C_WHITE}${sorted_active[*]}${C_BASE}"
+        echo -e "  ${C_WHITE}${sorted_active[*]}${C_BASE}\n"
     fi
-    echo ""
     
     cursor_on
-    echo -e "  ${C_DIM}Пример ввода: 22/tcp 443/tcp 53/udp${C_BASE}"
-    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Какие порты оставить открытыми? [${default_ssh}/tcp]: ${C_BASE}")" user_ports
+    echo -e "  ${C_DIM}Пример ввода: 443/tcp 80/tcp 53/udp${C_BASE}"
+    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Какие порты оставить открытыми? (SSH ${default_ssh}/tcp защищен от закрытия): ${C_BASE}")" user_ports
     cursor_off
     
-    user_ports=${user_ports:-"${default_ssh}/tcp"}
+    # Автоматически добавляем SSH порт к списку юзера
+    user_ports="${default_ssh}/tcp $user_ports"
     
-    # Парсим введенные порты в массив
     export FINAL_ALLOW_PORTS=()
     IFS=' ,;' read -r -a p_array <<< "$user_ports"
     for p in "${p_array[@]}"; do
@@ -68,7 +64,9 @@ _setup_firewalls() {
         fi
     done
 
-    # Вычисляем разницу: что закроется
+    # Убираем дубли на случай, если юзер сам ввел SSH порт руками
+    IFS=$'\n' FINAL_ALLOW_PORTS=($(sort -u <<<"${FINAL_ALLOW_PORTS[*]}")); unset IFS
+
     local will_close=()
     for ap in "${sorted_active[@]}"; do
         local match=0
@@ -91,11 +89,12 @@ _setup_firewalls() {
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Подтверждаешь настройку UFW с этими правилами? (y/n): ${C_BASE}")" CONFIRM
     cursor_off
     
+    echo ""
     if [[ "$CONFIRM" =~ ^[YyДд] ]]; then
         wait_for_apt
         run_task "Установка и настройка UFW" "_do_ufw_setup"
     else
-        echo -e "  ${C_ERR}Пропуск настройки UFW.${C_BASE}"
+        echo -e "  ${C_ERR}Пропуск настройки UFW.${C_BASE}\n"
     fi
 
     if ! check_installed "command -v traffic-guard"; then
@@ -104,35 +103,50 @@ _setup_firewalls() {
 }
 
 step_security() {
-    local opts=("Установить UFW и Traffic-Guard" "Остановить Traffic-Guard (Пауза)" "Запустить Traffic-Guard" "Открыть порт (UFW)" "Закрыть порт (UFW)" "Назад")
+    # Обрати внимание на '--- TRAFFIC-GUARD & UFW ---' — это хэдер меню
+    local opts=(
+        "--- TRAFFIC-GUARD & UFW ---" 
+        "Установить UFW и Traffic-Guard" 
+        "Остановить Traffic-Guard (Пауза)" 
+        "Запустить Traffic-Guard" 
+        "Открыть порт (UFW)" 
+        "Закрыть порт (UFW)" 
+        "Назад"
+    )
     while true; do
-        render_menu "TRAFFIC-GUARD & UFW" "${opts[@]}"
+        render_menu "${opts[@]}"
         clear
         case $MENU_CHOICE in
-            0) _setup_firewalls; pause ;;
-            1) 
-               echo -e "\n${C_ACCENT}[ TRAFFIC-GUARD ]${C_BASE}\n"
-               run_task "Остановка сервиса" "systemctl stop traffic-guard 2>/dev/null || true"
-               pause ;;
+            1) _setup_firewalls; pause ;;
             2) 
-               echo -e "\n${C_ACCENT}[ TRAFFIC-GUARD ]${C_BASE}\n"
-               run_task "Запуск сервиса" "systemctl start traffic-guard 2>/dev/null || true"
+               draw_header
+               echo -e "\n  ${C_INV} [ TRAFFIC-GUARD ] ${C_BASE}\n"
+               run_task "Остановка сервиса Traffic-Guard" "systemctl stop traffic-guard 2>/dev/null || true"
                pause ;;
-            3)
-               echo -e "\n${C_ACCENT}[ UFW ] ОТКРЫТИЕ ПОРТА${C_BASE}\n"
-               cursor_on
-               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
-               cursor_off
-               if [ -n "$ufw_port" ]; then run_task "Открытие $ufw_port" "ufw allow $ufw_port >/dev/null 2>&1"; fi
+            3) 
+               draw_header
+               echo -e "\n  ${C_INV} [ TRAFFIC-GUARD ] ${C_BASE}\n"
+               run_task "Запуск сервиса Traffic-Guard" "systemctl start traffic-guard 2>/dev/null || true"
                pause ;;
             4)
-               echo -e "\n${C_ACCENT}[ UFW ] ЗАКРЫТИЕ ПОРТА${C_BASE}\n"
+               draw_header
+               echo -e "\n  ${C_INV} [ UFW ] ОТКРЫТИЕ ПОРТА ${C_BASE}\n"
                cursor_on
                read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
                cursor_off
-               if [ -n "$ufw_port" ]; then run_task "Закрытие $ufw_port" "ufw delete allow $ufw_port >/dev/null 2>&1"; fi
+               echo ""
+               if [ -n "$ufw_port" ]; then run_task "Открытие порта $ufw_port" "ufw allow $ufw_port >/dev/null 2>&1"; fi
                pause ;;
-            5) return 1 ;;
+            5)
+               draw_header
+               echo -e "\n  ${C_INV} [ UFW ] ЗАКРЫТИЕ ПОРТА ${C_BASE}\n"
+               cursor_on
+               read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Введи порт (например, 443 или 80/tcp): ${C_BASE}")" ufw_port
+               cursor_off
+               echo ""
+               if [ -n "$ufw_port" ]; then run_task "Закрытие порта $ufw_port" "ufw delete allow $ufw_port >/dev/null 2>&1"; fi
+               pause ;;
+            6) return 0 ;;
         esac
     done
 }
@@ -144,13 +158,11 @@ _do_bot_ban_logic() {
 
     LIST_URL="https://raw.githubusercontent.com/Loorrr293/blocklist/main/blocklist.txt"
     
-    # Создаем python-генератор правил nftables (забирает лист + тянет AS из RIPE)
     tee /usr/local/sbin/update-blocklist-nft.py > /dev/null <<'PY'
 #!/usr/bin/env python3
 import sys, ipaddress, urllib.request, json
 
 URL = sys.argv[1]
-# Leaseweb + HE и прочие мусорные AS
 ASNS = ["AS16265", "AS60781", "AS28753", "AS30633", "AS38731", "AS49367", "AS51395", "AS50673", "AS59253", "AS133752", "AS134351", "AS6939"]
 
 b_v4, b_v6, asn_v4, asn_v6 = [], [], [], []
@@ -196,40 +208,32 @@ if asn_v6: print("add element inet aio_filter bad_asn_v6 { " + ", ".join(collaps
 PY
     chmod +x /usr/local/sbin/update-blocklist-nft.py
 
-    # Базовый скрипт, инициализирующий таблицы и применяющий дамп от Python
     tee /usr/local/sbin/update-blocklist-nft.sh > /dev/null <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Создаем таблицу aio_filter. Priority -100 означает, что пакет дропнется ДО того, как попадет в UFW/iptables.
 nft add table inet aio_filter 2>/dev/null || true
 nft add chain inet aio_filter input '{ type filter hook input priority -100; policy accept; }' 2>/dev/null || true
 
-# Создаем сеты
 nft add set inet aio_filter blocklist_v4 '{ type ipv4_addr; flags interval; }' 2>/dev/null || true
 nft add set inet aio_filter blocklist_v6 '{ type ipv6_addr; flags interval; }' 2>/dev/null || true
 nft add set inet aio_filter bad_asn_v4 '{ type ipv4_addr; flags interval; }' 2>/dev/null || true
 nft add set inet aio_filter bad_asn_v6 '{ type ipv6_addr; flags interval; }' 2>/dev/null || true
 
-# Привязываем сеты к правилам, если их еще нет
 nft list chain inet aio_filter input | grep -q '@blocklist_v4' || nft add rule inet aio_filter input ip saddr @blocklist_v4 drop
 nft list chain inet aio_filter input | grep -q '@blocklist_v6' || nft add rule inet aio_filter input ip6 saddr @blocklist_v6 drop
 nft list chain inet aio_filter input | grep -q '@bad_asn_v4' || nft add rule inet aio_filter input ip saddr @bad_asn_v4 drop
 nft list chain inet aio_filter input | grep -q '@bad_asn_v6' || nft add rule inet aio_filter input ip6 saddr @bad_asn_v6 drop
 
-# Генерируем правила через python и применяем разом
 tmp_rules=$(mktemp)
 /usr/local/sbin/update-blocklist-nft.py "$1" > "$tmp_rules"
 if [[ -s "$tmp_rules" ]]; then nft -f "$tmp_rules"; fi
 rm -f "$tmp_rules"
 
-# Сохраняем стейт nftables для перезагрузки
 nft list ruleset > /etc/nftables.conf
 systemctl enable nftables >/dev/null 2>&1
 SH
     chmod +x /usr/local/sbin/update-blocklist-nft.sh
 
-    # Systemd Timer (вместо старого cron/systemd месива)
     tee /etc/systemd/system/blocklist-update.service > /dev/null <<UNIT
 [Unit]
 Description=Update AIO Blocklist via nftables
@@ -255,14 +259,15 @@ TIMER
     systemctl enable --now blocklist-update.timer
     systemctl start blocklist-update.service
     
-    # Очистка мусора от старых версий скрипта (если были)
     systemctl stop ipset-persistent 2>/dev/null || true
     systemctl disable ipset-persistent 2>/dev/null || true
     rm -f /usr/local/bin/block_leaseweb.sh /etc/systemd/system/ipset-persistent.service /etc/ipset.conf
 }
 
 step_bot_protection() {
-    echo -e "\n${C_ACCENT}[ 09 ] AUTO_NFTABLES & BOT BAN${C_BASE}\n"
+    draw_header
+    echo -e "\n  ${C_INV} [ AUTO_NFTABLES & BOT BAN ] ${C_BASE}\n"
+    
     if check_installed "[ -f /usr/local/sbin/update-blocklist-nft.py ]"; then return; fi
     wait_for_apt
     run_task "Установка правил nftables и защит" "_do_bot_ban_logic"
