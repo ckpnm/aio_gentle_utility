@@ -5,29 +5,30 @@
 _do_certbot_install() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    # Устанавливаем socat, он нужен для standalone режима резервного acme.sh
-    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot dnsutils socat
+    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot dnsutils socat curl
 }
 
 _do_certbot_run() {
-    # Сначала пробуем Let's Encrypt
+    # Сначала пробуем штатный certbot с Let's Encrypt
     if ! certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive; then
-        echo "Let's Encrypt временно недоступен. Запускаем резервный выпуск через ZeroSSL..."
+        echo -e "\nLet's Encrypt временно недоступен. Запускаем резервный выпуск через acme.sh (Let's Encrypt API)..."
         
-        # Устанавливаем acme.sh
-        curl -s https://get.acme.sh | sh >/dev/null 2>&1
+        # Устанавливаем acme.sh, если его еще нет
+        if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
+            curl -s https://get.acme.sh | sh >/dev/null 2>&1
+        fi
         export PATH="$HOME/.acme.sh:$PATH"
         
         # Подготавливаем директории
         mkdir -p "/etc/letsencrypt/live/$LE_DOMAIN"
         
-        # Регистрируемся и выпускаем сертификат
-        acme.sh --register-account -m "$LE_EMAIL" --server zerossl >/dev/null 2>&1
-        acme.sh --set-default-ca --server zerossl >/dev/null 2>&1
+        # Переключаем acme.sh на Let's Encrypt (по умолчанию он юзает ZeroSSL, который банит .ru)
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1
+        ~/.acme.sh/acme.sh --register-account -m "$LE_EMAIL" >/dev/null 2>&1
         
-        if acme.sh --issue -d "$LE_DOMAIN" --standalone --server zerossl --force; then
+        if ~/.acme.sh/acme.sh --issue -d "$LE_DOMAIN" --standalone --force; then
             # Раскидываем ключи в стандартные папки certbot, чтобы другие модули их нашли
-            acme.sh --installcert -d "$LE_DOMAIN" \
+            ~/.acme.sh/acme.sh --installcert -d "$LE_DOMAIN" \
                 --key-file "/etc/letsencrypt/live/$LE_DOMAIN/privkey.pem" \
                 --fullchain-file "/etc/letsencrypt/live/$LE_DOMAIN/fullchain.pem" >/dev/null 2>&1
         else
@@ -58,10 +59,10 @@ _install_cert() {
         return 1
     fi
 
-    # Розовый цвет для IP, как на скриншоте
+    # Розовый цвет для IP
     local c_pink="\e[38;5;204m"
-    echo -e "  ${C_WHITE}IP сервера: ${c_pink}${SERVER_IP}${C_BASE}"
-    echo -e "  ${C_WHITE}IP домена:  ${c_pink}${DOMAIN_IP}${C_BASE}"
+    echo -e "  ${C_WHITE}IP сервера:${C_BASE} ${c_pink}${SERVER_IP}${C_BASE}"
+    echo -e "  ${C_WHITE}IP домена: ${C_BASE} ${c_pink}${DOMAIN_IP}${C_BASE}"
 
     if [ "$SERVER_IP" != "$DOMAIN_IP" ]; then
         echo -e "  ${C_ERR}Внимание: IP не совпадают!${C_BASE}"
@@ -92,7 +93,7 @@ _install_cert() {
     
     run_module_task "УСТАНОВКА SSL" "Выпуск сертификата ($LE_DOMAIN)..." "_do_certbot_run"
     
-    # Проверяем, появились ли файлы (от certbot или от резервного acme.sh)
+    # Проверяем, появились ли файлы
     if [ -f "/etc/letsencrypt/live/$LE_DOMAIN/fullchain.pem" ]; then
         if ! grep -q "^${LE_DOMAIN}|" /etc/aio_certs.db 2>/dev/null; then
             echo "$LE_DOMAIN|$(date +%s)" >> /etc/aio_certs.db
@@ -111,9 +112,9 @@ _do_cert_renew() {
     systemctl stop nginx apache2 x-ui 2>/dev/null || true
     certbot renew --quiet
     
-    # Если сертификаты были выпущены через acme.sh, обновляем их тоже
-    if command -v ~/.acme.sh/acme.sh >/dev/null 2>&1; then
-        ~/.acme.sh/acme.sh --cron --home ~/.acme.sh >/dev/null 2>&1
+    # Обновляем acme.sh сертификаты
+    if [ -f "$HOME/.acme.sh/acme.sh" ]; then
+        "$HOME/.acme.sh/acme.sh" --cron --home "$HOME/.acme.sh" >/dev/null 2>&1
     fi
     
     systemctl start nginx apache2 x-ui 2>/dev/null || true
