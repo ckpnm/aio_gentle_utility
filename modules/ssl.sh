@@ -5,19 +5,15 @@
 _do_certbot_install() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y -qq
-    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot
+    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot dnsutils
 }
 
 _do_certbot_run() {
-    certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive
-}
-
-_do_dns_check() {
-    SERVER_IP=$(curl -s4 ifconfig.me)
-    DOMAIN_IP=$(nslookup "$LE_DOMAIN" | grep -iE 'Address: [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 | awk '{print $2}')
-    if [ "$SERVER_IP" != "$DOMAIN_IP" ]; then
-        echo "Ошибка: IP сервера ($SERVER_IP) не совпадает с IP домена ($DOMAIN_IP)" >&2
-        exit 1
+    # Пытаемся получить сертификат от Let's Encrypt
+    if ! certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive; then
+        echo "Let's Encrypt недоступен. Пробуем альтернативный CA (Buypass)..."
+        # Если Let's Encrypt лежит (ошибка 500/maintenance), используем Buypass (работает точно так же)
+        certbot certonly --standalone --agree-tos -m "$LE_EMAIL" -d "$LE_DOMAIN" --non-interactive --server 'https://api.buypass.com/acme/directory'
     fi
 }
 
@@ -28,30 +24,51 @@ _install_cert() {
     
     cursor_on
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Домен (например, domain.com): ${C_BASE}")" LE_DOMAIN
-    if [ -z "$LE_DOMAIN" ]; then cursor_off; return; fi
-    
-    read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Домен точно привязан к IP этого сервера? (y/n): ${C_BASE}")" CONFIRM_IP
-    if [[ ! "$CONFIRM_IP" =~ ^[YyДд] ]]; then 
-        echo -e "\n  ${C_DIM}Отмена. Возврат в меню.${C_BASE}"
-        cursor_off; sleep 1; return 1
-    fi
-    export LE_DOMAIN
+    if [ -z "$LE_DOMAIN" ]; then cursor_off; return 1; fi
     cursor_off
     
-    echo ""
-    run_module_task "УСТАНОВКА SSL" "Проверка DNS (nslookup)..." "_do_dns_check"
-    if [ $? -ne 0 ]; then return; fi
+    echo -e "\n  ${C_DIM}Проверка привязки домена к IP...${C_BASE}"
+    
+    # Получаем IP явно и выводим пользователю
+    local SERVER_IP=$(curl -s4 ifconfig.me 2>/dev/null)
+    local DOMAIN_IP=$(nslookup "$LE_DOMAIN" 2>/dev/null | awk '/^Address: / { print $2 }' | grep -v ':' | tail -n1)
+
+    if [ -z "$DOMAIN_IP" ]; then
+        echo -e "  ${C_ERR}Ошибка: Домен $LE_DOMAIN не резолвится (нет A-записи).${C_BASE}"
+        return 1
+    fi
+
+    echo -e "  ${C_WHITE}IP сервера:${C_BASE} $SERVER_IP"
+    echo -e "  ${C_WHITE}IP домена:${C_BASE}  $DOMAIN_IP"
+
+    if [ "$SERVER_IP" != "$DOMAIN_IP" ]; then
+        echo -e "  ${C_ERR}Внимание: IP не совпадают! Выпуск сертификата скорее всего завершится ошибкой.${C_BASE}"
+        cursor_on
+        read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Всё равно продолжить установку? (y/n): ${C_BASE}")" force_cont
+        cursor_off
+        if [[ ! "$force_cont" =~ ^[YyДд] ]]; then 
+            echo -e "\n  ${C_DIM}Отмена. Возврат в меню.${C_BASE}"
+            return 1
+        fi
+    else
+        echo -e "  ${C_OK}IP совпадают. Продолжаем...${C_BASE}"
+    fi
+    export LE_DOMAIN
     
     echo ""
     cursor_on
     read -p "$(echo -e "  ${C_ACCENT}${C_BOLD}> Email: ${C_BASE}")" LE_EMAIL
     cursor_off
-    if [ -z "$LE_EMAIL" ]; then return; fi
+    if [ -z "$LE_EMAIL" ]; then return 1; fi
     export LE_EMAIL
     
     echo ""
     wait_for_apt
     run_module_task "УСТАНОВКА SSL" "Установка certbot..." "_do_certbot_install"
+    
+    # Останавливаем веб-серверы, чтобы порт 80 был свободен для certbot standalone
+    systemctl stop nginx apache2 x-ui 2>/dev/null || true
+    
     run_module_task "УСТАНОВКА SSL" "Выпуск сертификата ($LE_DOMAIN)..." "_do_certbot_run"
     
     if [ -d "/etc/letsencrypt/live/$LE_DOMAIN" ]; then
@@ -59,14 +76,21 @@ _install_cert() {
         if ! grep -q "^${LE_DOMAIN}|" /etc/aio_certs.db 2>/dev/null; then
             echo "$LE_DOMAIN|$(date +%s)" >> /etc/aio_certs.db
         fi
-        echo -e "\n  ${C_OK}Сертификат для ${C_WHITE}${LE_DOMAIN}${C_OK} получен.${C_BASE}\n"
+        echo -e "\n  ${C_OK}Сертификат для ${C_WHITE}${LE_DOMAIN}${C_OK} успешно получен.${C_BASE}\n"
         echo -e "  ${C_WHITE}Путь к сертификату: /etc/letsencrypt/live/${LE_DOMAIN}/fullchain.pem${C_BASE}"
         echo -e "  ${C_WHITE}Путь к ключу:       /etc/letsencrypt/live/${LE_DOMAIN}/privkey.pem${C_BASE}"
+    else
+        echo -e "\n  ${C_ERR}Не удалось получить сертификат. Проверь логи: $LOG_FILE${C_BASE}"
     fi
+    
+    # Запускаем службы обратно
+    systemctl start nginx apache2 x-ui 2>/dev/null || true
 }
 
 _do_cert_renew() {
+    systemctl stop nginx apache2 x-ui 2>/dev/null || true
     certbot renew --quiet
+    systemctl start nginx apache2 x-ui 2>/dev/null || true
 }
 
 _renew_cert() {
