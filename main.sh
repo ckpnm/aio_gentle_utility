@@ -169,32 +169,33 @@ run_task() {
     local task_name=$1
     local cmd_func=$2
     cursor_off
-    local text_len=${#task_name}
-    local pad_len=$(( 50 - text_len ))
-    [[ $pad_len -lt 1 ]] && pad_len=1
-    local pad_spaces=$(printf "%${pad_len}s" "")
     
-    printf "  ${C_ACCENT}${C_BOLD}%s%s${C_BASE}" "$task_name" "$pad_spaces"
-    printf "\e[s"
+    # Печатаем название задачи и спускаемся на строку ниже для бара
+    echo -e "  ${C_ACCENT}${C_BOLD}${task_name}${C_BASE}"
+    printf "  \e[s" # Сохраняем позицию курсора
 
     { eval "$cmd_func"; } >> "$LOG_FILE" 2>&1 &
     local task_pid=$!
 
-    _draw_progress "$task_pid" &
-    local bar_pid=$!
-
-    wait $task_pid
-    local exit_code=$?
-    kill $bar_pid 2>/dev/null; wait $bar_pid 2>/dev/null
-    printf "\e[u\e[K"
-
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${C_OK}✓${C_BASE}"
-    else
-        echo -e "${C_ERR}[ОШИБКА]${C_BASE}"
-        echo -e "  ${C_WHITE}Смотри логи: $LOG_FILE${C_BASE}"
-        cursor_on; exit 1
-    fi
+    _draw_progress() {
+    local pid=$1
+    local width=35; local p=0; local delay=0.1; local ticks=0
+    while kill -0 "$pid" 2>/dev/null; do
+        local bar=""
+        for ((i=0; i<width; i++)); do
+            if [ $i -lt $p ]; then bar+="●"; else bar+="○"; fi
+        done
+        printf "\e[u%b%s%b" "$C_ACCENT" "$bar" "$C_BASE"
+        sleep $delay
+        ((ticks++))
+        if [ $p -lt $((width * 6 / 10)) ]; then
+            if (( ticks % 2 == 0 )); then ((p++)); fi
+        elif [ $p -lt $((width * 8 / 10)) ]; then
+            if (( ticks % 5 == 0 )); then ((p++)); fi
+        elif [ $p -lt $((width - 1)) ]; then
+            if (( ticks % 15 == 0 )); then ((p++)); fi
+        fi
+    done
 }
 
 safe_download() { curl -sSL "$1" > "$2"; }
